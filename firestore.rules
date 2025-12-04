@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Fonctions d'aide
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.isAdmin == true;
+    }
+    
+    function canCreate() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.canCreate == true;
+    }
+
+    function canUpdate() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.canUpdate == true;
+    }
+
+    // --- RÈGLES ---
+
+    // Utilisateurs : lecture pour soi-même ou admin, écriture admin seulement
+    match /users/{userId} {
+      allow read: if isAuthenticated(); 
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Immobilisations (Assets)
+    match /assets/{assetId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreate();
+      allow update: if canUpdate();
+      allow delete: if isAdmin();
+    }
+    
+    // Logs (Audit)
+    match /logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Impossible de falsifier l'historique
+    }
+    
+    // Configuration système
+    match /parametre/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

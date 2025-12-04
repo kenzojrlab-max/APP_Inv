@@ -4,7 +4,6 @@ import { INITIAL_CONFIG } from './constants';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import AdminPanel from './components/AdminPanel';
-// AJOUT: Loader2 et AlertCircle pour l'animation et les erreurs
 import { LayoutDashboard, Box, Settings, LogOut, Menu, Palette, Check, Moon, Leaf, Monitor, Briefcase, Lock, Mail, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
@@ -47,10 +46,12 @@ const App: React.FC = () => {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
 
-  // --- 1. CHARGEMENT INITIAL ---
+  // --- 1. CHARGEMENT INITIAL & SURVEILLANCE AUTH ---
   useEffect(() => {
+    // Cette fonction surveille en permanence l'état de connexion
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // --- UTILISATEUR CONNECTÉ ---
         const userDocRef = doc(db, "users", firebaseUser.uid);
         const userSnap = await getDoc(userDocRef);
         if (userSnap.exists()) {
@@ -58,10 +59,14 @@ const App: React.FC = () => {
           setUser({ ...userData, id: firebaseUser.uid } as User);
         }
       } else {
+        // --- UTILISATEUR DÉCONNECTÉ (C'est ici que la magie opère) ---
         setUser(null);
+        setLoginEmail(''); // Vide forcé de l'email
+        setLoginPass('');  // Vide forcé du mot de passe
+        setLoginError(''); // Vide des erreurs
       }
       setLoading(false);
-      setIsLoggingIn(false); // Arrête le chargement une fois l'auth vérifiée
+      setIsLoggingIn(false); 
     });
 
     const unsubscribeConfig = onSnapshot(doc(db, "parametre", "system_config"), (docSnap) => {
@@ -74,7 +79,7 @@ const App: React.FC = () => {
       unsubscribeAuth();
       unsubscribeConfig();
     };
-  }, []);
+  }, []); // Le tableau vide [] assure que cela tourne dès le démarrage
 
   // --- 2. CHARGEMENT DONNÉES ---
   useEffect(() => {
@@ -160,46 +165,36 @@ const App: React.FC = () => {
     }
   };
 
-  // --- NOUVELLE FONCTION LOGIN AVEC GESTION D'ERREUR ---
+  // --- FONCTION LOGIN ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoggingIn(true); // Active le spinner
-    setLoginError('');    // Efface les erreurs précédentes
+    setIsLoggingIn(true);
+    setLoginError('');
     
     try {
       await signInWithEmailAndPassword(auth, loginEmail, loginPass);
-      // Pas besoin de rediriger ici, le useEffect s'en charge
     } catch (error: any) {
-      setIsLoggingIn(false); // Arrête le spinner
+      setIsLoggingIn(false);
       console.error("Erreur Auth:", error.code);
       
-      // Traduction des erreurs en français
       let msg = "Une erreur est survenue lors de la connexion.";
       switch (error.code) {
-        case 'auth/invalid-email':
-          msg = "Le format de l'adresse email est invalide.";
-          break;
+        case 'auth/invalid-email': msg = "Le format de l'adresse email est invalide."; break;
         case 'auth/user-not-found':
         case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          msg = "Email ou mot de passe incorrect.";
-          break;
-        case 'auth/too-many-requests':
-          msg = "Trop de tentatives. Compte temporairement bloqué.";
-          break;
-        case 'auth/network-request-failed':
-          msg = "Problème de connexion internet.";
-          break;
-        default:
-          msg = "Erreur de connexion (" + error.code + ")";
+        case 'auth/invalid-credential': msg = "Email ou mot de passe incorrect."; break;
+        case 'auth/too-many-requests': msg = "Trop de tentatives. Compte temporairement bloqué."; break;
+        case 'auth/network-request-failed': msg = "Problème de connexion internet."; break;
+        default: msg = "Erreur de connexion (" + error.code + ")";
       }
-      setLoginError(msg); // Affiche le message rouge
+      setLoginError(msg);
     }
   };
 
   const handleLogout = async () => {
     await signOut(auth);
-    setUser(null);
+    // Le nettoyage se fait désormais automatiquement dans le useEffect (onAuthStateChanged)
+    // Cela garantit que les champs se vident même si la déconnexion est déclenchée ailleurs.
   };
 
   const handleSaveAsset = async (assetData: Asset, isNew: boolean, reason?: string) => {
@@ -217,19 +212,13 @@ const App: React.FC = () => {
 
         if (oldAsset) {
           const fieldsToCheck = ['name', 'location', 'state', 'holder', 'category', 'description'];
-          
           fieldsToCheck.forEach(field => {
             // @ts-ignore
             const oldVal = oldAsset[field];
             // @ts-ignore
             const newVal = assetData[field];
-
             if (oldVal !== newVal) {
-              changes.push({
-                field: field,
-                before: oldVal,
-                after: newVal
-              });
+              changes.push({ field: field, before: oldVal, after: newVal });
             }
           });
         }
@@ -289,18 +278,12 @@ const App: React.FC = () => {
     try {
       secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
       const secondaryAuth = getAuthUtils(secondaryApp);
-
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, u.email, u.password);
-      
       const newUid = userCredential.user.uid;
-      
       const userToSave = { ...u, id: newUid };
       delete (userToSave as any).password; 
-      
       await setDoc(doc(db, "users", newUid), userToSave);
-      
       alert(`Utilisateur ${u.firstName} créé avec succès !`);
-
     } catch (error: any) {
       console.error("Erreur création:", error);
       if (error.code === 'auth/email-already-in-use') {
@@ -309,9 +292,7 @@ const App: React.FC = () => {
         alert("Erreur création utilisateur : " + error.message);
       }
     } finally {
-        if (secondaryApp) {
-            await deleteApp(secondaryApp);
-        }
+        if (secondaryApp) { await deleteApp(secondaryApp); }
     }
   };
 
@@ -333,14 +314,13 @@ const App: React.FC = () => {
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50"></div>
                 <div className="text-center mb-8">
                     <img src="/logo.png" alt="Logo" className="w-20 h-20 mb-4 mx-auto object-contain" />
-                    
                     <h2 className="text-2xl font-bold text-white tracking-widest uppercase mb-1">Authentification</h2>
                     <div className="h-1 w-12 bg-edc-gold mx-auto rounded-full"></div>
                 </div>
                 
-                <form onSubmit={handleLogin} className="space-y-5">
+                {/* --- FORMULAIRE DE CONNEXION AVEC AUTOCOMPLETE OFF --- */}
+                <form onSubmit={handleLogin} className="space-y-5" autoComplete="off">
                    
-                   {/* ZONE D'ERREUR (AJOUTÉE) */}
                    {loginError && (
                      <div className="bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded relative flex items-center gap-2 text-sm animate-pulse">
                         <AlertCircle size={16} />
@@ -353,10 +333,11 @@ const App: React.FC = () => {
                       <input 
                         type="email" 
                         required 
+                        autoComplete="off" // Empêche l'autocomplétion
                         placeholder="nom@edc.cm" 
                         className={`w-full bg-white border rounded-lg px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-edc-gold ${loginError ? 'border-red-500' : 'border-blue-400'}`}
                         value={loginEmail} 
-                        onChange={e => { setLoginEmail(e.target.value); setLoginError(''); }} // Efface l'erreur quand on écrit
+                        onChange={e => { setLoginEmail(e.target.value); setLoginError(''); }} 
                         disabled={isLoggingIn} 
                       />
                    </div>
@@ -365,15 +346,15 @@ const App: React.FC = () => {
                       <input 
                         type="password" 
                         required 
+                        autoComplete="new-password" // Astuce pour forcer le navigateur à ne pas remplir
                         placeholder="••••••••" 
                         className={`w-full bg-white border rounded-lg px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-edc-gold ${loginError ? 'border-red-500' : 'border-blue-400'}`}
                         value={loginPass} 
-                        onChange={e => { setLoginPass(e.target.value); setLoginError(''); }} // Efface l'erreur quand on écrit
+                        onChange={e => { setLoginPass(e.target.value); setLoginError(''); }} 
                         disabled={isLoggingIn} 
                       />
                    </div>
                    
-                   {/* BOUTON MODIFIÉ (Animation + Texte) */}
                    <button type="submit" disabled={isLoggingIn} className={`w-full bg-edc-gold hover:bg-yellow-500 text-[#003366] font-bold py-3.5 rounded-lg shadow-lg flex items-center justify-center gap-2 mt-6 transition-all ${isLoggingIn ? 'opacity-70 cursor-not-allowed' : ''}`}>
                       {isLoggingIn ? (
                         <>
