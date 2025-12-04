@@ -1,0 +1,5 @@
+{
+  "name": "Application Inventair Version 2.0",
+  "description": "Application Web Responsive pour la gestion et l'inventaire des actifs de l'Electricity Development Corporation (EDC). Gestion du cycle de vie des immobilisations, audit et tableaux de bord.",
+  "requestFramePermissions": []
+}

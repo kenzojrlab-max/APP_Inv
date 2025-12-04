@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    
+    <!-- CHANGEMENT ICI : Logo avec ?v=2 pour forcer l'affichage immédiat -->
+    <link rel="icon" type="image/png" href="/logo.png?v=2" />
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- CHANGEMENT ICI : Titre par défaut corrigé -->
+    <title>EDC Panorama</title>
+    
+    <!-- Google Fonts: Playfair Display (Serif Premium) & Inter (Sans-Serif Clean) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <!-- CSS Variables for Theming -->
+    <style>
+      :root {
+        /* Default Enterprise Theme */
+        --edc-blue: #003366;
+        --edc-orange: #FF6600;
+        --edc-light: #F0F4F8;
+        --edc-bg: #F3F4F6; /* gray-100 */
+        --edc-text: #111827; /* gray-900 */
+        --edc-sidebar-text: #FFFFFF;
+        --edc-border: #E5E7EB; /* gray-200 */
+        --edc-card-bg: #FFFFFF;
+      }
+
+      /* Dark Mode - Slate / Indigo Spec */
+      [data-theme='dark'] {
+        --edc-blue: #818cf8; /* Indigo-400 (Accent) */
+        --edc-orange: #fbbf24; /* Amber-400 (Secondary Accent) */
+        --edc-light: #1e293b; /* Slate-800 (Secondary Surface / Cards) */
+        --edc-bg: #0f172a; /* Slate-900 (Main Background) */
+        --edc-text: #f1f5f9; /* Slate-100 (Main Text) */
+        --edc-sidebar-text: #e2e8f0; /* Slate-200 */
+        --edc-border: #334155; /* Slate-700 */
+        --edc-card-bg: #1e293b; /* Slate-800 */
+      }
+
+      /* Material Design */
+      [data-theme='material'] {
+        --edc-blue: #6200EE;
+        --edc-orange: #03DAC6;
+        --edc-light: #F5F5F5;
+        --edc-bg: #FFFFFF;
+        --edc-text: #212121;
+        --edc-sidebar-text: #FFFFFF;
+        --edc-border: #E0E0E0;
+        --edc-card-bg: #FFFFFF;
+      }
+
+      /* Green / RSE */
+      [data-theme='green'] {
+        --edc-blue: #2D6A4F;
+        --edc-orange: #D8F3DC;
+        --edc-light: #F0FDF4;
+        --edc-bg: #F7FDF9;
+        --edc-text: #1B4332;
+        --edc-sidebar-text: #FFFFFF;
+        --edc-border: #bbf7d0;
+        --edc-card-bg: #FFFFFF;
+      }
+
+      /* Dashboard Modern */
+      [data-theme='modern'] {
+        --edc-blue: #0F172A;
+        --edc-orange: #6366F1;
+        --edc-light: #F8FAFC;
+        --edc-bg: #F1F5F9;
+        --edc-text: #334155;
+        --edc-sidebar-text: #94A3B8;
+        --edc-border: #CBD5E1;
+        --edc-card-bg: #FFFFFF;
+      }
+
+      body {
+        background-color: var(--edc-bg);
+        color: var(--edc-text);
+        transition: background-color 0.3s ease, color 0.3s ease;
+        font-family: 'Inter', sans-serif;
+      }
+
+      /* --- COMPONENT OVERRIDES FOR DARK MODE --- */
+      /* These rules automatically adapt existing Tailwind classes to the Slate Theme */
+
+      [data-theme='dark'] .bg-white {
+        background-color: #1e293b !important; /* Slate-800 */
+        color: #f1f5f9 !important; /* Slate-100 */
+        border-color: #334155 !important; /* Slate-700 */
+      }
+
+      [data-theme='dark'] .bg-gray-50, 
+      [data-theme='dark'] .bg-gray-100 {
+        background-color: #0f172a !important; /* Slate-900 */
+        color: #94a3b8 !important; /* Slate-400 */
+      }
+
+      /* Text Colors */
+      [data-theme='dark'] .text-gray-500,
+      [data-theme='dark'] .text-gray-600 {
+        color: #94a3b8 !important; /* Slate-400 */
+      }
+      
+      [data-theme='dark'] .text-gray-700,
+      [data-theme='dark'] .text-gray-800,
+      [data-theme='dark'] .text-gray-900 {
+        color: #f8fafc !important; /* Slate-50 */
+      }
+
+      /* Borders */
+      [data-theme='dark'] .border-gray-200,
+      [data-theme='dark'] .border-gray-300 {
+        border-color: #334155 !important; /* Slate-700 */
+      }
+
+      /* Inputs & Selects */
+      [data-theme='dark'] input, 
+      [data-theme='dark'] select, 
+      [data-theme='dark'] textarea {
+        background-color: #0f172a !important; /* Slate-900 */
+        border-color: #475569 !important; /* Slate-600 */
+        color: #f1f5f9 !important; /* Slate-100 */
+      }
+
+      [data-theme='dark'] input:focus, 
+      [data-theme='dark'] select:focus, 
+      [data-theme='dark'] textarea:focus {
+        border-color: #818cf8 !important; /* Indigo-400 */
+        box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.2) !important;
+      }
+
+      /* Table Rows */
+      [data-theme='dark'] tr.hover\:bg-gray-50:hover {
+        background-color: #334155 !important; /* Slate-700 on hover */
+      }
+
+      /* Scrollbars */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+      }
+      [data-theme='dark'] ::-webkit-scrollbar-thumb {
+        background: #475569;
+      }
+
+    </style>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            },
+            colors: {
+              edc: {
+                blue: 'var(--edc-blue)', 
+                orange: 'var(--edc-orange)', 
+                light: 'var(--edc-light)',
+                text: 'var(--edc-text)',
+                border: 'var(--edc-border)',
+                royal: '#003366', // Bleu Roi specifique
+                gold: '#F59E0B',  // Or specifique
+              }
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
