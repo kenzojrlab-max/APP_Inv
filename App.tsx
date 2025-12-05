@@ -4,7 +4,7 @@ import { INITIAL_CONFIG } from './constants';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import AdminPanel from './components/AdminPanel';
-import { LayoutDashboard, Box, Settings, LogOut, Menu, Palette, Check, Moon, Leaf, Monitor, Briefcase, Lock, Mail, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, Box, Settings, LogOut, Menu, Palette, Check, Moon, Leaf, Monitor, Briefcase, Lock, Mail, ChevronRight, Loader2, AlertCircle, Zap, Activity } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { db, auth, firebaseConfig } from './firebase'; 
@@ -36,7 +36,6 @@ const App: React.FC = () => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   
-  // NOUVEAUX ÉTATS (Loading & Erreur)
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
 
@@ -46,24 +45,33 @@ const App: React.FC = () => {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
 
-  // --- 1. CHARGEMENT INITIAL & SURVEILLANCE AUTH ---
+  // --- 1. CHARGEMENT INITIAL & GESTION DU THÈME ---
   useEffect(() => {
-    // Cette fonction surveille en permanence l'état de connexion
+    // Charger le thème depuis le localStorage IMMÉDIATEMENT
+    const savedTheme = localStorage.getItem('edc-theme');
+    if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // --- UTILISATEUR CONNECTÉ ---
         const userDocRef = doc(db, "users", firebaseUser.uid);
         const userSnap = await getDoc(userDocRef);
         if (userSnap.exists()) {
           const userData = userSnap.data();
           setUser({ ...userData, id: firebaseUser.uid } as User);
+          
+          // Synchroniser le thème si l'utilisateur en a un préféré en base
+          if (userData.preferences?.theme) {
+             document.documentElement.setAttribute('data-theme', userData.preferences.theme);
+             localStorage.setItem('edc-theme', userData.preferences.theme);
+          }
         }
       } else {
-        // --- UTILISATEUR DÉCONNECTÉ (C'est ici que la magie opère) ---
         setUser(null);
-        setLoginEmail(''); // Vide forcé de l'email
-        setLoginPass('');  // Vide forcé du mot de passe
-        setLoginError(''); // Vide des erreurs
+        setLoginEmail(''); 
+        setLoginPass('');  
+        setLoginError(''); 
       }
       setLoading(false);
       setIsLoggingIn(false); 
@@ -79,9 +87,9 @@ const App: React.FC = () => {
       unsubscribeAuth();
       unsubscribeConfig();
     };
-  }, []); // Le tableau vide [] assure que cela tourne dès le démarrage
+  }, []); 
 
-  // --- 2. CHARGEMENT DONNÉES ---
+  // --- 2. CHARGEMENT DONNÉES (SI CONNECTÉ) ---
   useEffect(() => {
     if (!user) return;
 
@@ -103,10 +111,6 @@ const App: React.FC = () => {
        });
     }
 
-    if (user.preferences?.theme) {
-       document.documentElement.setAttribute('data-theme', user.preferences.theme);
-    }
-
     return () => {
       unsubscribeAssets();
       unsubscribeUsers();
@@ -114,7 +118,6 @@ const App: React.FC = () => {
     };
   }, [user]);
 
-  // --- 3. GESTION DU TITRE DE L'ONGLET ---
   useEffect(() => {
     if (user) {
       document.title = `${user.firstName} - EDC Panorama`;
@@ -124,27 +127,28 @@ const App: React.FC = () => {
   }, [user]);
 
   const handleThemeChange = async (newTheme: Theme) => {
-    if (!user) return;
+    // Appliquer immédiatement et sauvegarder en local
     document.documentElement.setAttribute('data-theme', newTheme);
-    const updatedUser = { ...user, preferences: { ...user.preferences, theme: newTheme } };
-    setUser(updatedUser);
-    setThemeMenuOpen(false);
-    await updateDoc(doc(db, "users", user.id), { "preferences.theme": newTheme });
+    localStorage.setItem('edc-theme', newTheme);
+    
+    if (user) {
+        const updatedUser = { ...user, preferences: { ...user.preferences, theme: newTheme } };
+        setUser(updatedUser);
+        setThemeMenuOpen(false);
+        await updateDoc(doc(db, "users", user.id), { "preferences.theme": newTheme });
+    }
   };
 
   const addLog = async (action: Log['action'], description: string, targetCode?: string, changes?: any[]) => {
     const safeUserId = user?.id || auth.currentUser?.uid || 'ID_INCONNU';
     const safeUserEmail = user?.email || auth.currentUser?.email || 'email_inconnu';
-    
     const userNameDisplay = user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : 'Utilisateur';
     const finalUserName = userNameDisplay || 'Utilisateur Inconnu';
-
     const safeChanges = changes ? changes.map(change => ({
       field: change.field ?? 'Inconnu',
       before: change.before === undefined ? null : change.before,
       after: change.after === undefined ? null : change.after
     })) : null;
-
     const newLog: any = {
       id: Date.now().toString(),
       timestamp: Date.now(),
@@ -155,37 +159,31 @@ const App: React.FC = () => {
       description: description,
       targetCode: targetCode ?? 'N/A'
     };
-
     if (safeChanges) newLog.changes = safeChanges;
-
     try {
       await setDoc(doc(db, "logs", newLog.id), newLog);
     } catch (e: any) {
-      console.error("ERREUR CRITIQUE LOG:", e.message);
+      console.error("ERREUR LOG:", e.message);
     }
   };
 
-  // --- FONCTION LOGIN ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
     setLoginError('');
-    
     try {
       await signInWithEmailAndPassword(auth, loginEmail, loginPass);
     } catch (error: any) {
       setIsLoggingIn(false);
-      console.error("Erreur Auth:", error.code);
-      
-      let msg = "Une erreur est survenue lors de la connexion.";
+      let msg = "Erreur de connexion.";
       switch (error.code) {
-        case 'auth/invalid-email': msg = "Le format de l'adresse email est invalide."; break;
+        case 'auth/invalid-email': msg = "Format email invalide."; break;
         case 'auth/user-not-found':
         case 'auth/wrong-password':
-        case 'auth/invalid-credential': msg = "Email ou mot de passe incorrect."; break;
-        case 'auth/too-many-requests': msg = "Trop de tentatives. Compte temporairement bloqué."; break;
-        case 'auth/network-request-failed': msg = "Problème de connexion internet."; break;
-        default: msg = "Erreur de connexion (" + error.code + ")";
+        case 'auth/invalid-credential': msg = "Identifiants incorrects."; break;
+        case 'auth/too-many-requests': msg = "Compte temporairement bloqué. Réessayez plus tard."; break;
+        case 'auth/network-request-failed': msg = "Vérifiez votre connexion internet."; break;
+        default: msg = "Erreur (" + error.code + ")";
       }
       setLoginError(msg);
     }
@@ -193,14 +191,11 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await signOut(auth);
-    // Le nettoyage se fait désormais automatiquement dans le useEffect (onAuthStateChanged)
-    // Cela garantit que les champs se vident même si la déconnexion est déclenchée ailleurs.
   };
 
   const handleSaveAsset = async (assetData: Asset, isNew: boolean, reason?: string) => {
     try {
       const actorName = user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : 'Inconnu';
-
       if (isNew) {
         const newDocRef = doc(collection(db, "assets"));
         const newAsset = { ...assetData, id: newDocRef.id, isArchived: false };
@@ -209,7 +204,6 @@ const App: React.FC = () => {
       } else {
         const oldAsset = assets.find(a => a.id === assetData.id);
         const changes: any[] = [];
-
         if (oldAsset) {
           const fieldsToCheck = ['name', 'location', 'state', 'holder', 'category', 'description'];
           fieldsToCheck.forEach(field => {
@@ -222,12 +216,10 @@ const App: React.FC = () => {
             }
           });
         }
-
         await updateDoc(doc(db, "assets", assetData.id), assetData as any);
         await addLog('UPDATE', reason || `Modification par ${actorName}`, assetData.code, changes);
       }
     } catch (err: any) {
-      console.error(err);
       alert("Erreur sauvegarde: " + err.message);
     }
   };
@@ -251,12 +243,7 @@ const App: React.FC = () => {
          if(asset.code) {
              const existing = assets.find(a => a.code === asset.code);
              const newDocRef = existing ? doc(db, "assets", existing.id) : doc(collection(db, "assets"));
-             const finalAsset = { 
-                 ...asset, 
-                 id: newDocRef.id, 
-                 isArchived: false,
-                 customAttributes: asset.customAttributes || {} 
-             } as Asset;
+             const finalAsset = { ...asset, id: newDocRef.id, isArchived: false, customAttributes: asset.customAttributes || {} } as Asset;
              await setDoc(newDocRef, finalAsset, { merge: true });
              count++;
          }
@@ -274,23 +261,19 @@ const App: React.FC = () => {
   const handleAddUser = async (u: User) => {
     const secondaryAppName = `SecondaryApp-${Date.now()}`;
     let secondaryApp: any = null;
-
     try {
       secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
       const secondaryAuth = getAuthUtils(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, u.email, u.password);
       const newUid = userCredential.user.uid;
-      const userToSave = { ...u, id: newUid };
-      delete (userToSave as any).password; 
-      await setDoc(doc(db, "users", newUid), userToSave);
-      alert(`Utilisateur ${u.firstName} créé avec succès !`);
-    } catch (error: any) {
-      console.error("Erreur création:", error);
-      if (error.code === 'auth/email-already-in-use') {
-        alert("Cet email est déjà utilisé !");
-      } else {
-        alert("Erreur création utilisateur : " + error.message);
+      if(newUid){
+          const userToSave = { ...u, id: newUid };
+          delete (userToSave as any).password; 
+          await setDoc(doc(db, "users", newUid), userToSave);
+          alert(`Utilisateur ${u.firstName} créé avec succès !`);
       }
+    } catch (error: any) {
+      alert("Erreur création utilisateur : " + error.message);
     } finally {
         if (secondaryApp) { await deleteApp(secondaryApp); }
     }
@@ -304,78 +287,134 @@ const App: React.FC = () => {
     await deleteDoc(doc(db, "users", id));
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center">Chargement...</div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-[var(--edc-bg)] text-[var(--edc-text)] font-bold animate-pulse">Chargement EDC...</div>;
 
+  // --- PAGE DE CONNEXION ---
   if (!user) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center font-sans bg-[#f5f7fa]">
-        <div className="w-full max-w-sm px-4 animate-fade-in">
-              <div className="bg-[#00509e] rounded-xl p-8 shadow-2xl relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50"></div>
-                <div className="text-center mb-8">
-                    <img src="/logo.png" alt="Logo" className="w-20 h-20 mb-4 mx-auto object-contain" />
-                    <h2 className="text-2xl font-bold text-white tracking-widest uppercase mb-1">Authentification</h2>
-                    <div className="h-1 w-12 bg-edc-gold mx-auto rounded-full"></div>
+      <div className="min-h-screen w-full flex items-center justify-center font-sans relative overflow-hidden transition-all duration-500">
+        
+        {/* --- ARRIÈRE-PLAN DYNAMIQUE & ENGRENAGES --- */}
+        <div className="absolute inset-0 z-0 bg-[var(--edc-blue)] transition-colors duration-700 overflow-hidden">
+             
+             {/* Engrenage Géant 1 (Animation lente) */}
+             <div className="absolute -top-20 -right-20 opacity-10 animate-[spin_60s_linear_infinite]">
+                <Settings size={600} className="text-white" strokeWidth={0.5}/>
+             </div>
+             
+             {/* Engrenage Géant 2 (Rotation inverse) */}
+             <div className="absolute bottom-0 -left-20 opacity-10 animate-[spin_80s_linear_infinite_reverse]">
+                <Settings size={500} className="text-white" strokeWidth={0.5}/>
+             </div>
+
+             {/* Motif "Circuit / Grille Technique" */}
+             <div className="absolute inset-0 opacity-20" 
+                  style={{ 
+                      backgroundImage: `
+                        linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+                      `,
+                      backgroundSize: '50px 50px'
+                  }}>
+             </div>
+
+             {/* Dégradé radial pour focus central */}
+             <div className="absolute inset-0 bg-gradient-to-br from-[var(--edc-blue)]/80 via-[var(--edc-blue)]/50 to-[var(--edc-light)]/90"></div>
+        </div>
+
+        {/* --- BLOC AUTHENTIFICATION 3D (TAILLE RÉDUITE: max-w-[340px]) --- */}
+        <div className="w-full max-w-[340px] px-4 z-10 animate-fade-in">
+              <div className="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-3xl p-6 shadow-2xl relative overflow-hidden group ring-1 ring-white/40 transition-all duration-500 hover:shadow-[0_35px_60px_-15px_rgba(0,0,0,0.6)] hover:scale-[1.02]"
+                   style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)' }}> 
+                
+                {/* Effet de reflet interne Glassmorphism */}
+                <div className="absolute -top-32 -left-32 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-bl from-white/5 to-transparent pointer-events-none"></div>
+
+                <div className="text-center mb-6 relative z-10">
+                    <div className="relative inline-block mb-2">
+                        {/* Halo dynamique autour du logo */}
+                        <div className="absolute inset-0 bg-[var(--edc-orange)] blur-2xl opacity-30 rounded-full"></div>
+                        <img src="/logo.png" alt="Logo" className="w-20 h-20 object-contain relative drop-shadow-2xl transform transition-transform duration-500 hover:rotate-3" />
+                    </div>
+                    <h2 className="text-2xl font-serif font-bold text-white tracking-widest uppercase mb-1 drop-shadow-lg">Connexion</h2>
+                    <div className="flex items-center justify-center gap-1.5 text-white/90 text-[9px] uppercase tracking-[0.2em] font-bold">
+                       <Activity size={10} className="text-[var(--edc-orange)]"/> EDC Panorama <Zap size={10} className="text-[var(--edc-orange)]"/>
+                    </div>
                 </div>
                 
-                {/* --- FORMULAIRE DE CONNEXION AVEC AUTOCOMPLETE OFF --- */}
-                <form onSubmit={handleLogin} className="space-y-5" autoComplete="off">
+                <form onSubmit={handleLogin} className="space-y-4 relative z-10" autoComplete="off">
                    
                    {loginError && (
-                     <div className="bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded relative flex items-center gap-2 text-sm animate-pulse">
-                        <AlertCircle size={16} />
-                        <span>{loginError}</span>
+                     <div className="bg-red-500/30 border border-red-400/50 text-white px-3 py-2 rounded-xl relative flex items-center gap-2 text-xs animate-pulse backdrop-blur-md shadow-inner">
+                        <AlertCircle size={14} className="shrink-0 text-red-200" />
+                        <span className="font-medium leading-tight">{loginError}</span>
                      </div>
                    )}
 
-                   <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-blue-200 uppercase tracking-wider flex items-center gap-2"><Mail size={12}/> Email Professionnel</label>
+                   <div className="space-y-1.5 group">
+                      <label className="text-[10px] font-bold text-blue-50 uppercase tracking-wider flex items-center gap-1.5 drop-shadow-md group-focus-within:text-[var(--edc-orange)] transition-colors duration-300">
+                          <Mail size={12}/> Email
+                      </label>
                       <input 
                         type="email" 
                         required 
-                        autoComplete="off" // Empêche l'autocomplétion
+                        autoComplete="off"
                         placeholder="nom@edc.cm" 
-                        className={`w-full bg-white border rounded-lg px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-edc-gold ${loginError ? 'border-red-500' : 'border-blue-400'}`}
+                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[var(--edc-orange)] focus:border-white/30 transition-all shadow-inner hover:bg-black/30"
                         value={loginEmail} 
                         onChange={e => { setLoginEmail(e.target.value); setLoginError(''); }} 
                         disabled={isLoggingIn} 
                       />
                    </div>
-                   <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-blue-200 uppercase tracking-wider flex items-center gap-2"><Lock size={12}/> Mot de passe</label>
+                   <div className="space-y-1.5 group">
+                      <label className="text-[10px] font-bold text-blue-50 uppercase tracking-wider flex items-center gap-1.5 drop-shadow-md group-focus-within:text-[var(--edc-orange)] transition-colors duration-300">
+                          <Lock size={12}/> Mot de passe
+                      </label>
                       <input 
                         type="password" 
                         required 
-                        autoComplete="new-password" // Astuce pour forcer le navigateur à ne pas remplir
+                        autoComplete="new-password"
                         placeholder="••••••••" 
-                        className={`w-full bg-white border rounded-lg px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-edc-gold ${loginError ? 'border-red-500' : 'border-blue-400'}`}
+                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[var(--edc-orange)] focus:border-white/30 transition-all shadow-inner hover:bg-black/30"
                         value={loginPass} 
                         onChange={e => { setLoginPass(e.target.value); setLoginError(''); }} 
                         disabled={isLoggingIn} 
                       />
                    </div>
                    
-                   <button type="submit" disabled={isLoggingIn} className={`w-full bg-edc-gold hover:bg-yellow-500 text-[#003366] font-bold py-3.5 rounded-lg shadow-lg flex items-center justify-center gap-2 mt-6 transition-all ${isLoggingIn ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                   <button 
+                        type="submit" 
+                        disabled={isLoggingIn} 
+                        className="w-full bg-gradient-to-r from-[var(--edc-orange)] to-orange-600 text-white font-bold py-3 rounded-xl shadow-xl flex items-center justify-center gap-2 mt-6 transition-all transform hover:-translate-y-0.5 hover:shadow-2xl active:translate-y-0 hover:brightness-110 disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden relative text-sm group-hover:shadow-[var(--edc-orange)]/30"
+                    >
+                      {/* Effet de reflet sur le bouton */}
+                      <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12"></div>
+                      
                       {isLoggingIn ? (
                         <>
-                          <Loader2 size={18} className="animate-spin" />
-                          Connexion en cours...
+                          <Loader2 size={16} className="animate-spin" />
+                          Connexion...
                         </>
                       ) : (
                         <>
-                          CONNEXION <ChevronRight size={18} strokeWidth={3}/>
+                          ENTRER <ChevronRight size={16} strokeWidth={3}/>
                         </>
                       )}
                    </button>
                    
                 </form>
-                <div className="mt-6 text-center text-[10px] text-blue-200/60 font-medium pt-4 border-t border-blue-800/30">&copy; EDC Cameroun. Accès réservé.</div>
+                <div className="mt-6 text-center text-[9px] text-white/40 font-medium pt-4 border-t border-white/10 leading-tight">
+                    &copy; {new Date().getFullYear()} Electricity Development Corporation.<br/>
+                    Système Sécurisé.
+                </div>
              </div>
         </div>
       </div>
     );
   }
 
+  // --- INTERFACE PRINCIPALE (DASHBOARD / ASSETS / ADMIN) ---
   return (
     <div className="flex h-screen bg-edc-light font-sans transition-colors duration-300">
       <aside className="hidden md:flex flex-col w-64 bg-edc-blue text-[var(--edc-sidebar-text)] shadow-xl transition-colors duration-300">
@@ -414,13 +453,13 @@ const App: React.FC = () => {
                   <Palette size={18} />
                </button>
                {themeMenuOpen && (
-                 <div className="absolute bottom-10 left-0 ml-10 w-48 bg-white text-gray-800 rounded-lg shadow-xl border border-gray-200 py-1 z-50">
-                    <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b">Choisir un thème</p>
+                 <div className="absolute bottom-10 left-0 ml-10 w-48 bg-[var(--edc-card-bg)] text-[var(--edc-text)] rounded-lg shadow-xl border border-[var(--edc-border)] py-1 z-50">
+                    <p className="px-3 py-2 text-xs font-semibold opacity-70 uppercase tracking-wider border-b border-[var(--edc-border)]">Choisir un thème</p>
                     {THEMES.map(t => (
-                      <button key={t.id} onClick={() => handleThemeChange(t.id)} className={`w-full text-left px-3 py-2 text-sm flex items-center gap-3 hover:bg-gray-50 transition-colors ${(user.preferences?.theme || 'enterprise') === t.id ? 'bg-blue-50 text-blue-700 font-medium' : ''}`}>
-                        <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: t.color }}></span>
+                      <button key={t.id} onClick={() => handleThemeChange(t.id)} className={`w-full text-left px-3 py-2 text-sm flex items-center gap-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${(user.preferences?.theme || 'enterprise') === t.id ? 'text-edc-orange font-bold' : ''}`}>
+                        <span className="w-4 h-4 rounded-full border border-gray-400" style={{ backgroundColor: t.color }}></span>
                         <span className="flex-1">{t.name}</span>
-                        {(user.preferences?.theme || 'enterprise') === t.id && <Check size={14} className="text-blue-600"/>}
+                        {(user.preferences?.theme || 'enterprise') === t.id && <Check size={14}/>}
                       </button>
                     ))}
                  </div>
@@ -441,9 +480,9 @@ const App: React.FC = () => {
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-1 rounded hover:bg-white/10"><Menu size={28} /></button>
          </div>
          {mobileMenuOpen && (
-           <div className="md:hidden bg-blue-900 text-white absolute w-full z-30 shadow-xl flex flex-col">
-              <div className="p-4 bg-blue-950 border-b border-white/10 flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-full bg-edc-orange flex items-center justify-center text-white font-bold text-lg shrink-0 border-2 border-blue-800">{user.firstName[0]}</div>
+           <div className="md:hidden bg-edc-blue text-white absolute w-full z-30 shadow-xl flex flex-col">
+              <div className="p-4 bg-black/20 border-b border-white/10 flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-full bg-edc-orange flex items-center justify-center text-white font-bold text-lg shrink-0 border-2 border-white/20">{user.firstName[0]}</div>
                  <div className="min-w-0">
                     <p className="font-bold text-white truncate">{user.firstName} {user.lastName}</p>
                     <p className="text-xs text-blue-200 truncate">{user.email}</p>
