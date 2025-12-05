@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Asset, AppConfig, User } from '../types';
-import { Search, Plus, Edit, Trash2, X, Save, FileSpreadsheet, Eye, AlertTriangle, Upload, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, Save, FileSpreadsheet, Eye, AlertTriangle, Upload, Download, ChevronLeft, ChevronRight, Filter, RotateCcw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface AssetManagerProps {
@@ -15,7 +15,12 @@ interface AssetManagerProps {
 const ITEMS_PER_PAGE = 50;
 
 const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSave, onImport, onDelete }) => {
+  // --- STATES DE RECHERCHE & FILTRES ---
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterLocation, setFilterLocation] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterState, setFilterState] = useState('');
+
   const [currentPage, setCurrentPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -47,15 +52,26 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
 
   const [formData, setFormData] = useState<Partial<Asset>>(initialFormState);
 
+  // --- LOGIQUE DE FILTRAGE AVANCÉE ---
   const filteredAssets = useMemo(() => {
-    return assets.filter(a => 
-      !a.isArchived && (
+    return assets.filter(a => {
+      // 1. Filtre Global (Recherche texte)
+      const matchesSearch = !searchTerm || (
         a.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.holder.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    );
-  }, [assets, searchTerm]);
+        a.holder.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.location.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+      // 2. Filtres Spécifiques (Menu déroulants)
+      const matchesLocation = !filterLocation || a.location === filterLocation;
+      const matchesCategory = !filterCategory || a.category === filterCategory;
+      const matchesState = !filterState || a.state === filterState;
+
+      // 3. Exclure les archivés + Combinaison ET
+      return !a.isArchived && matchesSearch && matchesLocation && matchesCategory && matchesState;
+    });
+  }, [assets, searchTerm, filterLocation, filterCategory, filterState]);
 
   const totalPages = Math.ceil(filteredAssets.length / ITEMS_PER_PAGE);
   const paginatedAssets = useMemo(() => {
@@ -63,9 +79,17 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     return filteredAssets.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredAssets, currentPage]);
 
+  // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, filterLocation, filterCategory, filterState]);
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setFilterLocation('');
+    setFilterCategory('');
+    setFilterState('');
+  };
 
   const getFieldConfig = (key: string, defaultLabel: string) => {
     const field = config.coreFields?.find(f => f.key === key);
@@ -454,15 +478,69 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
         </div>
       </div>
 
-      <div className="mb-4 relative">
-        <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-        <input 
-          type="text" 
-          placeholder="Rechercher par Code, Nom ou Détenteur..." 
-          className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-edc-blue outline-none"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+      {/* --- BARRE DE FILTRES MULTI-CRITÈRES --- */}
+      <div className="bg-white p-4 rounded-lg shadow mb-4 border border-edc-border">
+        <div className="flex items-center gap-2 mb-3 text-edc-blue font-bold text-sm uppercase tracking-wide">
+           <Filter size={16} /> Filtres Avancés
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+           {/* Recherche Texte Globale */}
+           <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Recherche globale..." 
+                className="w-full pl-10 pr-4 py-2 border rounded-md focus:ring-1 focus:ring-edc-blue outline-none text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+           </div>
+
+           {/* Filtre Localisation */}
+           <select 
+              value={filterLocation} 
+              onChange={(e) => setFilterLocation(e.target.value)}
+              className={`w-full border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-edc-blue outline-none ${filterLocation ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}
+           >
+              <option value="">Toutes Localisations</option>
+              {config.locations.map(l => <option key={l} value={l}>{l}</option>)}
+           </select>
+
+           {/* Filtre Catégorie */}
+           <select 
+              value={filterCategory} 
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className={`w-full border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-edc-blue outline-none ${filterCategory ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}
+           >
+              <option value="">Toutes Catégories</option>
+              {Object.keys(config.categories).sort().map(c => (
+                 <option key={c} value={c}>{c} - {config.categoriesDescriptions[c]}</option>
+              ))}
+           </select>
+
+           {/* Filtre État */}
+           <div className="flex gap-2">
+             <select 
+                value={filterState} 
+                onChange={(e) => setFilterState(e.target.value)}
+                className={`flex-1 border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-edc-blue outline-none ${filterState ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}
+             >
+                <option value="">Tous États</option>
+                {config.states.map(s => <option key={s} value={s}>{s}</option>)}
+             </select>
+             
+             {/* Bouton Reset */}
+             {(searchTerm || filterLocation || filterCategory || filterState) && (
+               <button 
+                 onClick={resetFilters}
+                 className="p-2 text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                 title="Réinitialiser les filtres"
+               >
+                 <RotateCcw size={18} />
+               </button>
+             )}
+           </div>
+        </div>
       </div>
 
       {/* --- TABLE WITH PAGINATION --- */}
