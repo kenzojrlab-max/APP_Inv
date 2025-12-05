@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage";
+// import { getStorage } from "firebase/storage"; // DÉSACTIVÉ : Cause l'erreur "Storage not set up" sans CB
 // 1. Import nécessaire pour la sécurité
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
@@ -40,4 +40,4 @@ if (typeof window !== 'undefined') {
 
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-export const storage = getStorage(app);
+// export const storage = getStorage(app); // DÉSACTIVÉ : Pour éviter l'erreur sans carte bancaire
