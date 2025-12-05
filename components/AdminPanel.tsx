@@ -235,17 +235,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ users, logs, config, onUpdateCo
     setEditingListValue('');
   };
 
-  // --- FIELDS ACTIONS ---
+  // --- FIELDS ACTIONS (CORRIGÉES) ---
   const addCustomField = () => {
     if (!newField.label || !newField.type) return;
     const id = `field_${Date.now()}`;
+    
+    // CORRECTION : On construit l'objet de base sans 'options' initialement
     const fieldToAdd: CustomField = {
       id,
       label: newField.label,
       type: newField.type as any,
-      options: newField.type === 'select' ? (newField.options as any as string || '').split(',').map((s:string) => s.trim()) : undefined,
       isArchived: false
     };
+
+    // On ajoute 'options' SEULEMENT si c'est un select
+    if (newField.type === 'select') {
+        fieldToAdd.options = (newField.options as any as string || '').split(',').map((s:string) => s.trim());
+    }
 
     onUpdateConfig({
       ...config,
@@ -272,29 +278,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ users, logs, config, onUpdateCo
   const saveFieldChanges = () => {
     if (!editingFieldId) return;
 
-    // Retrieve original field to keep ID and other props
     const originalField = config.customFields.find(f => f.id === editingFieldId);
     if (!originalField) return;
 
     const newType = editFieldData.type || originalField.type;
     const newLabel = editFieldData.label || originalField.label;
 
-    // Parse options if type is select
     let newOptions = originalField.options;
+    
+    // CORRECTION LOGIQUE OPTIONS
     if (newType === 'select') {
-         newOptions = editOptionsStr.split(',').map(s => s.trim()).filter(s => s !== '');
+         // Si on passe en select ou qu'on édite un select, on prend les nouvelles options
+         newOptions = editOptionsStr ? editOptionsStr.split(',').map(s => s.trim()).filter(s => s !== '') : (newOptions || []);
     } else {
-         newOptions = undefined;
+         // Si ce n'est pas un select, on force à undefined (sera supprimé de l'objet)
+         newOptions = undefined; 
     }
 
     const updatedFields = config.customFields.map(f => {
       if (f.id === editingFieldId) {
-        return {
+        // On recrée l'objet proprement
+        const updatedField: CustomField = {
           ...f,
           label: newLabel,
           type: newType,
-          options: newOptions
         };
+        
+        // Si c'est un select, on ajoute les options, sinon on supprime la clé
+        if (newType === 'select' && newOptions) {
+            updatedField.options = newOptions;
+        } else {
+            delete updatedField.options;
+        }
+
+        return updatedField;
       }
       return f;
     });
