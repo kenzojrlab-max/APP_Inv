@@ -28,6 +28,9 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
 
+  // --- NOUVEAU STATE : MODE LECTURE SEULE ---
+  const [isViewMode, setIsViewMode] = useState(false);
+
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [assetToDeleteId, setAssetToDeleteId] = useState<string | null>(null);
   const [modificationReason, setModificationReason] = useState('');
@@ -136,6 +139,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     setEditingAsset(null);
     setFormData(initialFormState);
     setPreviewCode('');
+    setIsViewMode(false); // Mode création = édition
     setIsModalOpen(true);
   };
 
@@ -143,6 +147,16 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     setEditingAsset(asset);
     setFormData({ ...asset, customAttributes: asset.customAttributes || {} });
     setPreviewCode(asset.code);
+    setIsViewMode(false); // Mode édition explicite
+    setIsModalOpen(true);
+  };
+
+  // --- NOUVELLE FONCTION POUR LA CONSULTATION ---
+  const openViewModal = (asset: Asset) => {
+    setEditingAsset(asset);
+    setFormData({ ...asset, customAttributes: asset.customAttributes || {} });
+    setPreviewCode(asset.code);
+    setIsViewMode(true); // Mode lecture seule activé
     setIsModalOpen(true);
   };
 
@@ -192,6 +206,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isViewMode) return; // Sécurité supplémentaire
+
     if (!formData.location || !formData.category || !formData.name) {
       alert("Veuillez remplir les champs obligatoires (Localisation, Catégorie, Nom)");
       return;
@@ -373,8 +389,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
           const existsInDb = assets.some(a => a.code === code);
           if (existsInDb) {
               existingInDbCount++;
-              // On peut choisir d'ignorer OU de mettre à jour. Ici on ignore pour éviter les doublons accidentels
-              // Si tu veux mettre à jour, commente la ligne 'return' ci-dessous.
               return; 
           }
 
@@ -569,7 +583,12 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     </tr>
                 )}
                 {paginatedAssets.map(asset => (
-                <tr key={asset.id} className="hover:bg-gray-50">
+                <tr 
+                    key={asset.id} 
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    onDoubleClick={() => openViewModal(asset)} // DOUBLE-CLIC : LECTURE SEULE
+                    title="Double-cliquer pour voir les détails"
+                >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-edc-blue">{asset.code}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{asset.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -591,18 +610,26 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     {user.permissions.canUpdate && (
-                        <button onClick={() => openEditModal(asset)} className="text-indigo-600 hover:text-indigo-900 mr-3" title="Modifier">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); openEditModal(asset); }} 
+                            className="text-indigo-600 hover:text-indigo-900 mr-3" 
+                            title="Modifier"
+                        >
                         <Edit size={18} />
                         </button>
                     )}
                     {!user.permissions.canUpdate && (
-                        <button onClick={() => openEditModal(asset)} className="text-gray-600 hover:text-gray-900 mr-3" title="Voir détails">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); openEditModal(asset); }} 
+                            className="text-gray-600 hover:text-gray-900 mr-3" 
+                            title="Voir détails"
+                        >
                         <Eye size={18} />
                         </button>
                     )}
                     {user.permissions.canDelete && (
                         <button 
-                        onClick={() => openDeleteModal(asset.id)} 
+                        onClick={(e) => { e.stopPropagation(); openDeleteModal(asset.id); }} 
                         className="text-red-600 hover:text-red-900"
                         title="Archiver"
                         >
@@ -652,7 +679,9 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
           <div className="bg-white rounded-lg shadow-xl w-[95%] sm:w-full max-w-4xl max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center p-4 md:p-6 border-b shrink-0">
               <h3 className="text-lg md:text-xl font-bold text-gray-800">
-                {editingAsset ? (user.permissions.canUpdate ? 'Modifier Actif' : 'Détails Actif') : 'Nouvel Actif'}
+                {editingAsset 
+                  ? (isViewMode ? 'Détails Actif' : (user.permissions.canUpdate ? 'Modifier Actif' : 'Détails Actif')) 
+                  : 'Nouvel Actif'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-gray-700 p-1">
                 <X size={24} />
@@ -672,10 +701,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Année d'acquisition *</label>
                     <select 
-                        disabled={!user.permissions.canCreate && !editingAsset}
+                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
                         value={formData.acquisitionYear} 
                         onChange={(e) => handleInputChange('acquisitionYear', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                     >
                         {years.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
@@ -684,10 +713,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Localisation *</label>
                     <select 
-                        disabled={!user.permissions.canCreate && !editingAsset}
+                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
                         value={formData.location} 
                         onChange={(e) => handleInputChange('location', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                     >
                         <option value="">Sélectionner...</option>
                         {config.locations.map((l, idx) => <option key={`${l}-${idx}`} value={l}>{l}</option>)}
@@ -697,10 +726,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Catégorie *</label>
                     <select 
-                        disabled={!user.permissions.canCreate && !editingAsset}
+                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
                         value={formData.category} 
                         onChange={(e) => handleInputChange('category', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                     >
                         <option value="">Sélectionner...</option>
                         {Object.keys(config.categories).sort().map(k => (
@@ -712,10 +741,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Nom *</label>
                     <select 
-                        disabled={!user.permissions.canCreate && !editingAsset}
+                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
                         value={formData.name} 
                         onChange={(e) => handleInputChange('name', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                     >
                         <option value="">Sélectionner...</option>
                         {formData.category && config.categories[formData.category]?.map((n, idx) => (
@@ -729,10 +758,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">{fields.desc.label}</label>
                         <textarea 
-                            readOnly={!user.permissions.canUpdate && !!editingAsset}
+                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             value={formData.description} 
                             onChange={(e) => handleInputChange('description', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
                             rows={2}
                         />
                     </div>
@@ -742,10 +771,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">{fields.obs.label}</label>
                         <textarea 
-                            readOnly={!user.permissions.canUpdate && !!editingAsset}
+                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             value={formData.observation} 
                             onChange={(e) => handleInputChange('observation', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
                             rows={2}
                         />
                     </div>
@@ -754,10 +783,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 <div>
                     <label className="block text-sm font-medium text-gray-700">État</label>
                     <select 
-                        disabled={!user.permissions.canUpdate && !!editingAsset}
+                        disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                         value={formData.state} 
                         onChange={(e) => handleInputChange('state', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                     >
                         {config.states.map((s, idx) => <option key={`${s}-${idx}`} value={s}>{s}</option>)}
                     </select>
@@ -767,11 +796,11 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     <div>
                         <label className="block text-sm font-medium text-gray-700">{fields.door.label}</label>
                         <input 
-                            readOnly={!user.permissions.canUpdate && !!editingAsset}
+                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             type="text" 
                             value={formData.door} 
                             onChange={(e) => handleInputChange('door', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
                         />
                     </div>
                 )}
@@ -780,11 +809,11 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     <div>
                         <label className="block text-sm font-medium text-gray-700">{fields.holder.label}</label>
                         <input 
-                            readOnly={!user.permissions.canUpdate && !!editingAsset}
+                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             type="text" 
                             value={formData.holder} 
                             onChange={(e) => handleInputChange('holder', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
                         />
                     </div>
                 )}
@@ -792,10 +821,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Présence Détenteur</label>
                     <select 
-                        disabled={!user.permissions.canUpdate && !!editingAsset}
+                        disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                         value={formData.holderPresence} 
                         onChange={(e) => handleInputChange('holderPresence', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                     >
                         {config.holderPresences.map((s, idx) => <option key={`${s}-${idx}`} value={s}>{s}</option>)}
                     </select>
@@ -807,23 +836,22 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                         <label className="block text-sm font-medium text-gray-700 text-edc-blue">{field.label}</label>
                         {field.type === 'select' ? (
                             <select
-                            disabled={!user.permissions.canUpdate && !!editingAsset}
+                            disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             value={formData.customAttributes?.[field.id] || ''}
                             onChange={(e) => handleCustomAttributeChange(field.id, e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                             >
                             <option value="">Sélectionner...</option>
-                            {/* CORRECTION ICI : Utilisation de l'index pour garantir une clé unique */}
                             {field.options?.map((opt, idx) => (
                                 <option key={`${opt}-${idx}`} value={opt}>{opt}</option>
                             ))}
                             </select>
                         ) : field.type === 'boolean' ? (
                             <select
-                            disabled={!user.permissions.canUpdate && !!editingAsset}
+                            disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             value={formData.customAttributes?.[field.id] || ''}
                             onChange={(e) => handleCustomAttributeChange(field.id, e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                             >
                             <option value="">-</option>
                             <option value="Oui">Oui</option>
@@ -832,10 +860,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                         ) : (
                             <input
                             type={field.type}
-                            readOnly={!user.permissions.canUpdate && !!editingAsset}
+                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             value={formData.customAttributes?.[field.id] || ''}
                             onChange={(e) => handleCustomAttributeChange(field.id, e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
                             />
                         )}
                     </div>
@@ -845,11 +873,11 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">{fields.photo.label}</label>
                         <input 
-                            disabled={!user.permissions.canUpdate && !!editingAsset}
+                            disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
                             type="file" 
                             accept="image/*"
                             onChange={handlePhotoUpload}
-                            className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                            className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:cursor-not-allowed"
                         />
                         {formData.photoUrl && (
                             <img src={formData.photoUrl} alt="Preview" className="mt-2 h-32 object-contain border rounded" />
@@ -860,8 +888,11 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
             </div>
 
             <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 rounded-b-lg">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">Annuler</button>
-                {((!editingAsset && user.permissions.canCreate) || (editingAsset && user.permissions.canUpdate)) && (
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">
+                    {isViewMode ? "Fermer" : "Annuler"}
+                </button>
+                {/* Affiche le bouton Enregistrer seulement si ce n'est PAS le mode lecture ET (soit création, soit modification autorisée) */}
+                {!isViewMode && ((!editingAsset && user.permissions.canCreate) || (editingAsset && user.permissions.canUpdate)) && (
                 <button onClick={handleSubmit} type="button" className="px-4 py-2 bg-edc-blue text-white rounded hover:bg-blue-800 flex items-center gap-2">
                     <Save size={18} /> Enregistrer
                 </button>
