@@ -1,4 +1,3 @@
-
 export type Role = 'ADMIN' | 'USER';
 
 // --- Theme Types ---
@@ -66,6 +65,10 @@ export interface Asset {
   photoUrl?: string;
   isArchived: boolean;
   
+  // --- NOUVEAUX CHAMPS AJOUTÉS ---
+  unit?: string;      // Unité (ex: Kg, Litre, Pce)
+  amount?: number;    // Montant (ex: 15000)
+
   // Dynamic attributes storage
   customAttributes: Record<string, any>; 
 }

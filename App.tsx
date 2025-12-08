@@ -4,7 +4,7 @@ import { INITIAL_CONFIG } from './constants';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import AdminPanel from './components/AdminPanel';
-import { LayoutDashboard, Box, Settings, LogOut, Menu, Palette, Check, Moon, Leaf, Monitor, Briefcase, Lock, Mail, ChevronRight, Loader2, AlertCircle, Zap, Activity } from 'lucide-react';
+import { LayoutDashboard, Box, Settings, LogOut, Menu, Palette, Check, Moon, Leaf, Monitor, Briefcase, Lock, Mail, ChevronRight, Loader2, AlertCircle, Zap, Activity, Fan } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
 import { db, auth, firebaseConfig } from './firebase'; 
@@ -287,7 +287,19 @@ const App: React.FC = () => {
     await deleteDoc(doc(db, "users", id));
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-[var(--edc-bg)] text-[var(--edc-text)] font-bold animate-pulse">Chargement EDC...</div>;
+  // --- MODIFICATION 1 : ÉCRAN DE CHARGEMENT AVEC TURBINE (au lieu du texte) ---
+  if (loading) return (
+    <div className="flex flex-col h-screen items-center justify-center bg-[var(--edc-bg)]">
+       {/* Animation Turbine */}
+       <div className="relative flex items-center justify-center">
+          {/* Cercle extérieur (carter) */}
+          <div className="absolute w-24 h-24 border-4 border-gray-200 rounded-full border-t-edc-orange animate-spin"></div>
+          {/* La turbine (hélice) */}
+          <Fan size={64} className="text-edc-blue animate-[spin_1s_linear_infinite]" strokeWidth={2.5} />
+       </div>
+       <p className="mt-4 text-sm font-bold text-[var(--edc-text)] tracking-widest animate-pulse uppercase">Initialisation...</p>
+    </div>
+  );
 
   // --- PAGE DE CONNEXION ---
   if (!user) {
@@ -479,8 +491,9 @@ const App: React.FC = () => {
             </div>
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-1 rounded hover:bg-white/10"><Menu size={28} /></button>
          </div>
+         {/* --- MODIFICATION 2 : MENU MOBILE AJUSTÉ --- */}
          {mobileMenuOpen && (
-           <div className="md:hidden bg-edc-blue text-white absolute w-full z-30 shadow-xl flex flex-col">
+           <div className="md:hidden bg-edc-blue text-white absolute top-full right-0 w-64 z-30 shadow-xl flex flex-col">
               <div className="p-4 bg-black/20 border-b border-white/10 flex items-center gap-3">
                  <div className="w-10 h-10 rounded-full bg-edc-orange flex items-center justify-center text-white font-bold text-lg shrink-0 border-2 border-white/20">{user.firstName[0]}</div>
                  <div className="min-w-0">
@@ -493,7 +506,30 @@ const App: React.FC = () => {
                   <button onClick={() => { setCurrentView('assets'); setMobileMenuOpen(false); }} className="flex items-center px-4 py-3 w-full text-left hover:bg-white/5 rounded"><Box size={18} className="mr-3 opacity-70"/> Immobilisations</button>
                   {user.permissions.isAdmin && <button onClick={() => { setCurrentView('admin'); setMobileMenuOpen(false); }} className="flex items-center px-4 py-3 w-full text-left hover:bg-white/5 rounded"><Settings size={18} className="mr-3 opacity-70"/> Paramètre</button>}
               </div>
-              <button onClick={handleLogout} className="p-4 w-full text-left text-red-300 hover:text-red-200 bg-red-900/20 flex items-center justify-center font-semibold"><LogOut size={18} className="mr-2"/> Déconnexion</button>
+              
+              {/* --- AJOUT : SÉLECTEUR DE THÈME DANS LE MENU MOBILE --- */}
+              <div className="border-t border-white/10 p-2">
+                 <p className="px-4 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">Thème</p>
+                 <div className="flex gap-2 px-4 overflow-x-auto no-scrollbar pb-2">
+                    {THEMES.map(t => (
+                        <button 
+                           key={t.id} 
+                           onClick={() => handleThemeChange(t.id)}
+                           className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                              (user.preferences?.theme || 'enterprise') === t.id 
+                              ? 'border-white scale-110 shadow-md' 
+                              : 'border-transparent opacity-70 hover:opacity-100'
+                           }`}
+                           style={{ backgroundColor: t.color }}
+                           title={t.name}
+                        >
+                           {(user.preferences?.theme || 'enterprise') === t.id && <Check size={14} className="text-white drop-shadow-md"/>}
+                        </button>
+                    ))}
+                 </div>
+              </div>
+
+              <button onClick={handleLogout} className="p-4 w-full text-left text-red-300 hover:text-red-200 bg-red-900/20 flex items-center justify-center font-semibold border-t border-white/10"><LogOut size={18} className="mr-2"/> Déconnexion</button>
            </div>
          )}
          <div className="animate-fade-in h-full">

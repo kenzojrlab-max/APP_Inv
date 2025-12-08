@@ -20,6 +20,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const [filterLocation, setFilterLocation] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterState, setFilterState] = useState('');
+  // RETRAIT : state filterUnit supprimé car intégré au searchTerm
 
   const [currentPage, setCurrentPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -28,7 +29,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
 
-  // --- NOUVEAU STATE : MODE LECTURE SEULE ---
   const [isViewMode, setIsViewMode] = useState(false);
 
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -36,6 +36,14 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const [modificationReason, setModificationReason] = useState('');
   const [pendingAssetData, setPendingAssetData] = useState<Asset | null>(null);
   const [previewCode, setPreviewCode] = useState<string>('');
+
+  // --- STATE : SÉLECTION MULTIPLE ---
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // --- REFS POUR LE SCROLL SYNC ---
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
 
   const initialFormState: Partial<Asset> = {
     registrationDate: new Date().toISOString().split('T')[0],
@@ -50,6 +58,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     holder: '',
     observation: '',
     photoUrl: '',
+    unit: 'Pce',
+    amount: 0,
     customAttributes: {} 
   };
 
@@ -58,20 +68,19 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   // --- LOGIQUE DE FILTRAGE AVANCÉE ---
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
-      // 1. Filtre Global (Recherche texte)
+      // 1. Filtre Global (Texte) - MODIFIÉ pour inclure l'UNITÉ
       const matchesSearch = !searchTerm || (
         a.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.holder.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.location.toLowerCase().includes(searchTerm.toLowerCase())
+        a.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (a.unit && a.unit.toLowerCase().includes(searchTerm.toLowerCase())) // Recherche dans l'unité ajoutée ici
       );
 
-      // 2. Filtres Spécifiques (Menu déroulants)
       const matchesLocation = !filterLocation || a.location === filterLocation;
       const matchesCategory = !filterCategory || a.category === filterCategory;
       const matchesState = !filterState || a.state === filterState;
 
-      // 3. Exclure les archivés + Combinaison ET
       return !a.isArchived && matchesSearch && matchesLocation && matchesCategory && matchesState;
     });
   }, [assets, searchTerm, filterLocation, filterCategory, filterState]);
@@ -82,16 +91,23 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     return filteredAssets.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredAssets, currentPage]);
 
-  // Reset page on filter change
+  // Reset page and selection on filter change
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds(new Set());
   }, [searchTerm, filterLocation, filterCategory, filterState]);
 
-  const resetFilters = () => {
-    setSearchTerm('');
-    setFilterLocation('');
-    setFilterCategory('');
-    setFilterState('');
+  // --- LOGIQUE SYNCHRONISATION SCROLL ---
+  useEffect(() => {
+    if (tableContainerRef.current) {
+      setTableScrollWidth(tableContainerRef.current.scrollWidth);
+    }
+  }, [paginatedAssets, isModalOpen]);
+
+  const handleSyncScroll = (source: React.RefObject<HTMLDivElement>, target: React.RefObject<HTMLDivElement>) => {
+    if (source.current && target.current) {
+       target.current.scrollLeft = source.current.scrollLeft;
+    }
   };
 
   const getFieldConfig = (key: string, defaultLabel: string) => {
@@ -111,6 +127,63 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
      regDate: getFieldConfig('registrationDate', 'Date d\'enregistrement'),
   };
 
+  // --- LOGIQUE DE SÉLECTION ---
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const idsOnPage = paginatedAssets.map(a => a.id);
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        idsOnPage.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        paginatedAssets.forEach(a => newSet.delete(a.id));
+        return newSet;
+      });
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const isAllSelected = paginatedAssets.length > 0 && paginatedAssets.every(a => selectedIds.has(a.id));
+  const isIndeterminate = paginatedAssets.some(a => selectedIds.has(a.id)) && !isAllSelected;
+
+  // --- LOGIQUE SUPPRESSION ---
+  const openBulkDeleteModal = () => {
+    if (selectedIds.size === 0) return;
+    setAssetToDeleteId(null);
+    setIsDeleteModalOpen(true);
+  };
+
+  const openDeleteModal = (id: string) => {
+    setAssetToDeleteId(id);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (assetToDeleteId) {
+      onDelete(assetToDeleteId);
+      setAssetToDeleteId(null);
+    } else {
+      selectedIds.forEach(id => onDelete(id));
+      setSelectedIds(new Set());
+    }
+    setIsDeleteModalOpen(false);
+  };
+
+  // --- MODAL & FORM ---
   useEffect(() => {
     if (!editingAsset && isModalOpen) {
       let code = "";
@@ -139,7 +212,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     setEditingAsset(null);
     setFormData(initialFormState);
     setPreviewCode('');
-    setIsViewMode(false); // Mode création = édition
+    setIsViewMode(false);
     setIsModalOpen(true);
   };
 
@@ -147,30 +220,16 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     setEditingAsset(asset);
     setFormData({ ...asset, customAttributes: asset.customAttributes || {} });
     setPreviewCode(asset.code);
-    setIsViewMode(false); // Mode édition explicite
+    setIsViewMode(false);
     setIsModalOpen(true);
   };
 
-  // --- NOUVELLE FONCTION POUR LA CONSULTATION ---
   const openViewModal = (asset: Asset) => {
     setEditingAsset(asset);
     setFormData({ ...asset, customAttributes: asset.customAttributes || {} });
     setPreviewCode(asset.code);
-    setIsViewMode(true); // Mode lecture seule activé
+    setIsViewMode(true);
     setIsModalOpen(true);
-  };
-
-  const openDeleteModal = (id: string) => {
-    setAssetToDeleteId(id);
-    setIsDeleteModalOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (assetToDeleteId) {
-      onDelete(assetToDeleteId);
-      setIsDeleteModalOpen(false);
-      setAssetToDeleteId(null);
-    }
   };
 
   const handleInputChange = (field: keyof Asset, value: any) => {
@@ -206,7 +265,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isViewMode) return; // Sécurité supplémentaire
+    if (isViewMode) return;
 
     if (!formData.location || !formData.category || !formData.name) {
       alert("Veuillez remplir les champs obligatoires (Localisation, Catégorie, Nom)");
@@ -224,7 +283,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     }
 
     if (editingAsset) {
-      const criticalFields: (keyof Asset)[] = ['location', 'acquisitionYear', 'name', 'category', 'door', 'state', 'holderPresence'];
+      const criticalFields: (keyof Asset)[] = ['location', 'acquisitionYear', 'name', 'category', 'door', 'state', 'holderPresence', 'amount', 'unit'];
       const hasCriticalChange = criticalFields.some(field => formData[field] !== editingAsset[field]);
 
       if (hasCriticalChange) {
@@ -253,6 +312,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
         "Catégorie": `${asset.category} - ${config.categoriesDescriptions[asset.category] || ''}`,
         "Localisation": asset.location,
         "Année Acquisition": asset.acquisitionYear,
+        "Unité": asset.unit,
+        "Montant": asset.amount,
         [fields.regDate.label]: asset.registrationDate,
         "État": asset.state,
         [fields.holder.label]: asset.holder,
@@ -288,6 +349,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
           "Catégorie": "AA - Matériel de bureau",
           "Localisation": "EDC",
           "Année Acquisition": "2024",
+          "Unité": "Pce",
+          "Montant": "15000",
           [fields.regDate.label]: "2024-01-01",
           "État": "Bon état",
           [fields.holder.label]: "Jean Dupont",
@@ -332,12 +395,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
             const wsname = wb.SheetNames[0];
             const ws = wb.Sheets[wsname];
             const data = XLSX.utils.sheet_to_json(ws);
-            
             if (!data || data.length === 0) {
                 alert("Le fichier semble vide ou illisible.");
                 return;
             }
-
             processImportedData(data);
         } catch (error) {
             console.error("Erreur lecture Excel:", error);
@@ -371,21 +432,18 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
       let duplicateInExcelCount = 0;
       let existingInDbCount = 0;
       const seenCodes = new Set<string>();
-      
       const parsedAssets: Partial<Asset>[] = [];
 
       data.forEach((row: any, index: number) => {
           const code = row["Code Inventaire"] ? String(row["Code Inventaire"]).trim() : "";
-          if (!code) return; // Ignore lignes vides
+          if (!code) return; 
 
-          // 1. Vérification Doublon Interne (Excel)
           if (seenCodes.has(code)) {
               duplicateInExcelCount++;
-              return; // Ignore ce doublon
+              return; 
           }
           seenCodes.add(code);
 
-          // 2. Vérification Doublon Externe (Base de données)
           const existsInDb = assets.some(a => a.code === code);
           if (existsInDb) {
               existingInDbCount++;
@@ -394,7 +452,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
 
           let rawCategory = row["Catégorie"] ? String(row["Catégorie"]).trim() : "";
           let catCode = "";
-          
           if (rawCategory.includes("-")) {
               catCode = rawCategory.split("-")[0].trim();
           } else if (rawCategory.includes(" ")) {
@@ -421,6 +478,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
               door: row[fields.door.label] || '',
               description: row[fields.desc.label] || '',
               observation: row[fields.obs.label] || '',
+              unit: row["Unité"] || 'Pce',
+              amount: row["Montant"] ? parseFloat(String(row["Montant"]).replace(/[^0-9.-]+/g,"")) : 0,
               customAttributes: {}
           };
 
@@ -431,7 +490,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                   }
               });
           }
-          
           parsedAssets.push(asset);
       });
 
@@ -459,7 +517,20 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   return (
     <div className="p-3 md:p-6 bg-transparent min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <h2 className="text-xl md:text-2xl font-bold text-edc-blue">Gestion des Immobilisations</h2>
+        <div className="flex items-center gap-4">
+            <h2 className="text-xl md:text-2xl font-bold text-edc-blue">Gestion des Immobilisations</h2>
+            
+            {/* BOUTON SUPPRESSION MULTIPLE */}
+            {selectedIds.size > 0 && user.permissions.canDelete && (
+                <button 
+                  onClick={openBulkDeleteModal}
+                  className="animate-fade-in flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 border border-red-300 shadow-sm text-sm font-semibold"
+                >
+                   <Trash2 size={16} /> Supprimer ({selectedIds.size})
+                </button>
+            )}
+        </div>
+
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           {user.permissions.isAdmin && (
               <>
@@ -494,16 +565,16 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
 
       {/* --- BARRE DE FILTRES MULTI-CRITÈRES --- */}
       <div className="bg-white p-4 rounded-lg shadow mb-4 border border-edc-border">
-        <div className="flex items-center gap-2 mb-3 text-edc-blue font-bold text-sm uppercase tracking-wide">
+         <div className="flex items-center gap-2 mb-3 text-edc-blue font-bold text-sm uppercase tracking-wide">
            <Filter size={16} /> Filtres Avancés
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-           {/* Recherche Texte Globale */}
+           {/* Recherche Texte Globale (INCLUT UNITÉ) */}
            <div className="relative">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
               <input 
                 type="text" 
-                placeholder="Recherche globale..." 
+                placeholder="Code, Nom, Unité..." 
                 className="w-full pl-10 pr-4 py-2 border rounded-md focus:ring-1 focus:ring-edc-blue outline-none text-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -546,7 +617,12 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
              {/* Bouton Reset */}
              {(searchTerm || filterLocation || filterCategory || filterState) && (
                <button 
-                 onClick={resetFilters}
+                 onClick={() => {
+                    setSearchTerm('');
+                    setFilterLocation('');
+                    setFilterCategory('');
+                    setFilterState('');
+                 }}
                  className="p-2 text-red-500 hover:bg-red-50 rounded-md transition-colors"
                  title="Réinitialiser les filtres"
                >
@@ -557,95 +633,146 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
         </div>
       </div>
 
-      {/* --- TABLE WITH PAGINATION --- */}
-      <div className="bg-white rounded-lg shadow overflow-hidden border border-edc-border">
-        <div className="overflow-x-auto">
+      {/* --- TABLE WITH PAGINATION, STICKY HEADERS & CUSTOM SCROLLBARS --- */}
+      <div className="bg-white rounded-lg shadow border border-edc-border flex flex-col relative">
+        
+        {/* BARRE DE SCROLL DU HAUT (SYNCHRONISÉE) */}
+        <div 
+            ref={topScrollRef}
+            className="overflow-x-auto border-b border-gray-100 no-scrollbar-vertical"
+            onScroll={() => handleSyncScroll(topScrollRef, tableContainerRef)}
+        >
+             {/* Div fantôme pour forcer la largeur du scroll */}
+             <div style={{ width: tableScrollWidth }} className="h-1 pt-1"></div>
+        </div>
+
+        {/* CONTAINER TABLE (SCROLL PRINCIPAL AVEC MAX-HEIGHT & STICKY HEADER) */}
+        <div 
+            ref={tableContainerRef}
+            className="overflow-auto max-h-[70vh]" 
+            onScroll={() => handleSyncScroll(tableContainerRef, topScrollRef)}
+        >
             <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-100">
+            <thead className="bg-gray-100 sticky top-0 z-20 shadow-sm">
                 <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loc</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">État</th>
+                {/* CHECKBOX SELECT ALL */}
+                <th className="px-6 py-3 text-left w-10 sticky top-0 bg-gray-100 z-20">
+                    <input 
+                      type="checkbox"
+                      className="rounded border-gray-300 text-edc-blue focus:ring-edc-blue cursor-pointer h-4 w-4"
+                      checked={isAllSelected}
+                      ref={input => { if (input) input.indeterminate = isIndeterminate; }}
+                      onChange={handleSelectAll}
+                    />
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Code</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Nom</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Catégorie</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Loc</th>
+                
+                {/* COLONNES UNITÉ ET MONTANT */}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Unité</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Montant</th>
+
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">État</th>
                 {fields.holder.isVisible && (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{fields.holder.label}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">{fields.holder.label}</th>
                 )}
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Actions</th>
                 </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedAssets.length === 0 && (
                     <tr>
-                        <td colSpan={7} className="text-center py-8 text-gray-500">
+                        <td colSpan={10} className="text-center py-8 text-gray-500">
                             {filteredAssets.length === 0 ? "Aucune immobilisation trouvée." : "Page vide."}
                         </td>
                     </tr>
                 )}
-                {paginatedAssets.map(asset => (
-                <tr 
-                    key={asset.id} 
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
-                    onDoubleClick={() => openViewModal(asset)} // DOUBLE-CLIC : LECTURE SEULE
-                    title="Double-cliquer pour voir les détails"
-                >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-edc-blue">{asset.code}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{asset.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className="font-semibold text-gray-700">{asset.category}</span>
-                    <span className="text-gray-400 text-xs ml-2 hidden lg:inline-block">
-                        - {config.categoriesDescriptions[asset.category]}
-                    </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.location}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${asset.state === 'Bon état' ? 'bg-green-100 text-green-800' : 
-                        asset.state === 'Défectueux' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {asset.state}
-                    </span>
-                    </td>
-                    {fields.holder.isVisible && (
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.holder}</td>
-                    )}
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {user.permissions.canUpdate && (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); openEditModal(asset); }} 
-                            className="text-indigo-600 hover:text-indigo-900 mr-3" 
-                            title="Modifier"
-                        >
-                        <Edit size={18} />
-                        </button>
-                    )}
-                    {!user.permissions.canUpdate && (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); openEditModal(asset); }} 
-                            className="text-gray-600 hover:text-gray-900 mr-3" 
-                            title="Voir détails"
-                        >
-                        <Eye size={18} />
-                        </button>
-                    )}
-                    {user.permissions.canDelete && (
-                        <button 
-                        onClick={(e) => { e.stopPropagation(); openDeleteModal(asset.id); }} 
-                        className="text-red-600 hover:text-red-900"
-                        title="Archiver"
-                        >
-                        <Trash2 size={18} />
-                        </button>
-                    )}
-                    </td>
-                </tr>
-                ))}
+                {paginatedAssets.map(asset => {
+                  const isSelected = selectedIds.has(asset.id);
+                  return (
+                    <tr 
+                        key={asset.id} 
+                        className={`hover:bg-gray-50 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
+                        onClick={() => toggleSelection(asset.id)} // CLIC LIGNE SIMPLE = SELECTION
+                        onDoubleClick={(e) => { e.stopPropagation(); openViewModal(asset); }} // DOUBLE CLIC = VUE
+                        title="Clic pour sélectionner, Double-clic pour voir"
+                    >
+                        {/* CHECKBOX LIGNE */}
+                        <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                            <input 
+                              type="checkbox"
+                              className="rounded border-gray-300 text-edc-blue focus:ring-edc-blue cursor-pointer h-4 w-4"
+                              checked={isSelected}
+                              onChange={() => toggleSelection(asset.id)}
+                            />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-edc-blue">{asset.code}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{asset.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span className="font-semibold text-gray-700">{asset.category}</span>
+                        <span className="text-gray-400 text-xs ml-2 hidden lg:inline-block">
+                            - {config.categoriesDescriptions[asset.category]}
+                        </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.location}</td>
+                        
+                        {/* CELLULES UNITÉ ET MONTANT */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.unit || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {asset.amount ? new Intl.NumberFormat('fr-FR').format(asset.amount) : '-'} <span className="text-xs text-gray-400">FCFA</span>
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                            ${asset.state === 'Bon état' ? 'bg-green-100 text-green-800' : 
+                            asset.state === 'Défectueux' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                            {asset.state}
+                        </span>
+                        </td>
+                        {fields.holder.isVisible && (
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.holder}</td>
+                        )}
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium" onClick={(e) => e.stopPropagation()}>
+                        {user.permissions.canUpdate && (
+                            <button 
+                                onClick={() => openEditModal(asset)} 
+                                className="text-indigo-600 hover:text-indigo-900 mr-3" 
+                                title="Modifier"
+                            >
+                            <Edit size={18} />
+                            </button>
+                        )}
+                        {!user.permissions.canUpdate && (
+                            <button 
+                                onClick={() => openViewModal(asset)} 
+                                className="text-gray-600 hover:text-gray-900 mr-3" 
+                                title="Voir détails"
+                            >
+                            <Eye size={18} />
+                            </button>
+                        )}
+                        {user.permissions.canDelete && (
+                            <button 
+                            onClick={() => openDeleteModal(asset.id)} 
+                            className="text-red-600 hover:text-red-900"
+                            title="Archiver"
+                            >
+                            <Trash2 size={18} />
+                            </button>
+                        )}
+                        </td>
+                    </tr>
+                  );
+                })}
             </tbody>
             </table>
         </div>
         
         {/* Pagination Controls */}
         {filteredAssets.length > ITEMS_PER_PAGE && (
-            <div className="bg-gray-50 px-4 py-3 flex flex-col sm:flex-row items-center justify-between border-t border-gray-200 gap-4">
+            <div className="bg-gray-50 px-4 py-3 flex flex-col sm:flex-row items-center justify-between border-t border-gray-200 gap-4 mt-auto">
                 <div className="flex-1 flex justify-between items-center w-full sm:w-auto">
                     <div>
                         <p className="text-sm text-gray-700 text-center sm:text-left">
@@ -673,9 +800,10 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
         )}
       </div>
 
-      {/* Main Asset Modal */}
+      {/* Main Asset Modal (Create / Edit / View) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+          {/* ... (Contenu Modal Création/Edition INCHANGÉ) */}
           <div className="bg-white rounded-lg shadow-xl w-[95%] sm:w-full max-w-4xl max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center p-4 md:p-6 border-b shrink-0">
               <h3 className="text-lg md:text-xl font-bold text-gray-800">
@@ -696,8 +824,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                         {editingAsset ? editingAsset.code : (previewCode || "...")}
                     </p>
                 </div>
-
-                {/* Basic Info */}
+                
+                {/* --- CHAMPS FORMULAIRE --- */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Année d'acquisition *</label>
                     <select 
@@ -753,7 +881,37 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     </select>
                 </div>
 
-                {/* Details */}
+                {/* CHAMP UNITÉ */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Unité</label>
+                    <select 
+                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
+                        value={formData.unit} 
+                        onChange={(e) => handleInputChange('unit', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+                    >
+                        <option value="Pce">Pce (Pièce)</option>
+                        <option value="Kg">Kg</option>
+                        <option value="L">Litre</option>
+                        <option value="m">Mètre</option>
+                        <option value="Ens">Ensemble</option>
+                        <option value="Forfait">Forfait</option>
+                    </select>
+                </div>
+
+                {/* CHAMP MONTANT */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Montant (FCFA)</label>
+                    <input 
+                        type="number"
+                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
+                        value={formData.amount} 
+                        onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+                        min="0"
+                    />
+                </div>
+
                 {fields.desc.isVisible && (
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">{fields.desc.label}</label>
@@ -830,7 +988,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                     </select>
                 </div>
 
-                {/* --- DYNAMIC CUSTOM FIELDS RENDERING --- */}
                 {config.customFields && config.customFields.filter(f => !f.isArchived).map(field => (
                     <div key={field.id} className="md:col-span-1">
                         <label className="block text-sm font-medium text-gray-700 text-edc-blue">{field.label}</label>
@@ -891,7 +1048,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">
                     {isViewMode ? "Fermer" : "Annuler"}
                 </button>
-                {/* Affiche le bouton Enregistrer seulement si ce n'est PAS le mode lecture ET (soit création, soit modification autorisée) */}
                 {!isViewMode && ((!editingAsset && user.permissions.canCreate) || (editingAsset && user.permissions.canUpdate)) && (
                 <button onClick={handleSubmit} type="button" className="px-4 py-2 bg-edc-blue text-white rounded hover:bg-blue-800 flex items-center gap-2">
                     <Save size={18} /> Enregistrer
@@ -902,7 +1058,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal (UPDATED FOR BULK) */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 text-center">
@@ -911,7 +1067,13 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
              </div>
              <h3 className="text-lg font-bold text-gray-900 mb-2">Êtes-vous sûr ?</h3>
              <p className="text-sm text-gray-500 mb-6">
-               Voulez-vous vraiment archiver cet actif ? Cette action retirera l'actif de la liste principale.
+               Voulez-vous vraiment archiver{' '}
+               {/* MODIFICATION TEXTE DYNAMIQUE */}
+               {assetToDeleteId ? 
+                 "cet actif" : 
+                 <span className="font-bold text-red-600">{selectedIds.size} actifs sélectionnés</span>
+               } ? 
+               Cette action retirera {assetToDeleteId ? "l'actif" : "les actifs"} de la liste principale.
              </p>
              <div className="flex justify-center gap-3">
                <button 
@@ -934,6 +1096,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
       {/* Reason Modal */}
       {showReasonModal && (
          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
+            {/* ... (Contenu inchangé) */}
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-bold text-red-600 mb-2">Modification Critique Détectée</h3>
               <p className="text-sm text-gray-600 mb-4">
