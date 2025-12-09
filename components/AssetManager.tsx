@@ -20,7 +20,6 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const [filterLocation, setFilterLocation] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterState, setFilterState] = useState('');
-  // RETRAIT : state filterUnit supprimé car intégré au searchTerm
 
   const [currentPage, setCurrentPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,7 +57,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     holder: '',
     observation: '',
     photoUrl: '',
-    unit: 'Pce',
+    unit: '', // Initialisé à vide pour le texte libre
     amount: 0,
     customAttributes: {} 
   };
@@ -68,13 +67,13 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   // --- LOGIQUE DE FILTRAGE AVANCÉE ---
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
-      // 1. Filtre Global (Texte) - MODIFIÉ pour inclure l'UNITÉ
+      // 1. Filtre Global (Texte) - INCLUT L'UNITÉ
       const matchesSearch = !searchTerm || (
         a.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.holder.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (a.unit && a.unit.toLowerCase().includes(searchTerm.toLowerCase())) // Recherche dans l'unité ajoutée ici
+        (a.unit && a.unit.toLowerCase().includes(searchTerm.toLowerCase()))
       );
 
       const matchesLocation = !filterLocation || a.location === filterLocation;
@@ -127,21 +126,13 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
      regDate: getFieldConfig('registrationDate', 'Date d\'enregistrement'),
   };
 
-  // --- LOGIQUE DE SÉLECTION ---
+  // --- LOGIQUE DE SÉLECTION (GLOBALE) ---
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const idsOnPage = paginatedAssets.map(a => a.id);
-      setSelectedIds(prev => {
-        const newSet = new Set(prev);
-        idsOnPage.forEach(id => newSet.add(id));
-        return newSet;
-      });
+      const allFilteredIds = filteredAssets.map(a => a.id);
+      setSelectedIds(new Set(allFilteredIds));
     } else {
-      setSelectedIds(prev => {
-        const newSet = new Set(prev);
-        paginatedAssets.forEach(a => newSet.delete(a.id));
-        return newSet;
-      });
+      setSelectedIds(new Set());
     }
   };
 
@@ -157,8 +148,8 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     });
   };
 
-  const isAllSelected = paginatedAssets.length > 0 && paginatedAssets.every(a => selectedIds.has(a.id));
-  const isIndeterminate = paginatedAssets.some(a => selectedIds.has(a.id)) && !isAllSelected;
+  const isAllSelected = filteredAssets.length > 0 && selectedIds.size === filteredAssets.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredAssets.length;
 
   // --- LOGIQUE SUPPRESSION ---
   const openBulkDeleteModal = () => {
@@ -478,7 +469,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
               door: row[fields.door.label] || '',
               description: row[fields.desc.label] || '',
               observation: row[fields.obs.label] || '',
-              unit: row["Unité"] || 'Pce',
+              unit: row["Unité"] || '',
               amount: row["Montant"] ? parseFloat(String(row["Montant"]).replace(/[^0-9.-]+/g,"")) : 0,
               customAttributes: {}
           };
@@ -884,19 +875,13 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
                 {/* CHAMP UNITÉ */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Unité</label>
-                    <select 
+                    <input
+                        type="text"
                         disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
-                        value={formData.unit} 
+                        value={formData.unit}
                         onChange={(e) => handleInputChange('unit', e.target.value)}
                         className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        <option value="Pce">Pce (Pièce)</option>
-                        <option value="Kg">Kg</option>
-                        <option value="L">Litre</option>
-                        <option value="m">Mètre</option>
-                        <option value="Ens">Ensemble</option>
-                        <option value="Forfait">Forfait</option>
-                    </select>
+                    />
                 </div>
 
                 {/* CHAMP MONTANT */}

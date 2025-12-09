@@ -66,7 +66,7 @@ export interface Asset {
   isArchived: boolean;
   
   // --- NOUVEAUX CHAMPS AJOUTÉS ---
-  unit?: string;      // Unité (ex: Kg, Litre, Pce)
+  unit?: string;      
   amount?: number;    // Montant (ex: 15000)
 
   // Dynamic attributes storage

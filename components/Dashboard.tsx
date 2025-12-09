@@ -71,7 +71,14 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
       const badCondition = activeAssets.filter(a => ['Défectueux', 'Déprécié', 'Retiré'].includes(a.state)).length;
       const uniqueLocations = new Set(activeAssets.map(a => a.location)).size;
 
+      // CORRECTION ICI : Prise en compte du champ 'amount' natif
       const totalValue = activeAssets.reduce((sum, asset) => {
+        // 1. Priorité au champ natif 'amount'
+        if (asset.amount !== undefined && asset.amount !== null) {
+             return sum + Number(asset.amount);
+        }
+
+        // 2. Fallback sur les anciens champs personnalisés (Rétrocompatibilité)
         let val = 0;
         if (asset.customAttributes) {
              const amountKey = Object.keys(asset.customAttributes).find(k => 
@@ -168,7 +175,6 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
 
 
   const renderCustomLabel = (props: any) => {
-    // ... (Code du label pie chart inchangé)
     const RADIAN = Math.PI / 180;
     const { cx, cy, midAngle, outerRadius, fill, payload, percent } = props;
     const isSmallSlice = percent < 0.10;
