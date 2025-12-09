@@ -164,17 +164,23 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
 
   return (
     <>
-      {/* BOUTON FLOTTANT - Modifié pour être plus petit et déplaçable */}
+      {/* BOUTON FLOTTANT - Icone seule, sans fond, couleur thématique */}
       {!isOpen && (
         <button 
           onMouseDown={handleMouseDown}
           onClick={handleBtnClick}
           style={btnStyle}
-          className="fixed bottom-6 right-6 bg-gradient-to-r from-edc-blue to-blue-600 text-white p-2 md:p-3 rounded-full shadow-2xl hover:brightness-110 active:scale-95 z-50 flex items-center gap-1.5 cursor-grab"
+          className="fixed bottom-6 right-6 z-50 flex items-center justify-center p-2 cursor-grab hover:scale-125 transition-transform active:scale-95 group"
           title="Déplacer ou Ouvrir Panorama AI"
         >
-          <Lightbulb size={20} className="text-yellow-300 fill-yellow-300/20" strokeWidth={2} />
-          <span className="font-bold hidden md:inline text-xs tracking-wide select-none">Panorama AI</span>
+          {/* L'icône utilise text-edc-blue pour s'adapter au thème et un drop-shadow pour la visibilité */}
+          <Lightbulb 
+            size={36} 
+            className="text-edc-blue drop-shadow-xl filter transition-all duration-300 group-hover:drop-shadow-2xl" 
+            strokeWidth={2.5}
+            fill="currentColor"
+            fillOpacity={0.1}
+          />
         </button>
       )}
 
@@ -233,7 +239,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
         </div>
       )}
 
-      {/* MODALE D'IMPRESSION (Code existant inchangé, juste replié pour la clarté) */}
+      {/* MODALE D'IMPRESSION */}
       {reportToPrint && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-0 md:p-4 print:p-0 print:bg-white print:static print:block">
           <div className="bg-white w-full md:max-w-4xl h-full md:h-[90vh] md:rounded-xl shadow-2xl flex flex-col relative overflow-hidden print:overflow-visible print:h-auto print:max-w-none print:shadow-none print:block">
