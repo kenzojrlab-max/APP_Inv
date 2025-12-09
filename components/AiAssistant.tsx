@@ -26,6 +26,68 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
    
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // --- LOGIQUE DE DÉPLACEMENT DU BOUTON (DRAG & DROP) ---
+  const [btnStyle, setBtnStyle] = useState<React.CSSProperties>({});
+  const isDraggingRef = useRef(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+  const btnStartPos = useRef({ top: 0, left: 0 });
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Empêche la sélection de texte pendant le drag
+    if (e.button !== 0) return; // Seulement clic gauche
+
+    const btn = e.currentTarget as HTMLButtonElement;
+    const rect = btn.getBoundingClientRect();
+    
+    isDraggingRef.current = false;
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+    btnStartPos.current = { top: rect.top, left: rect.left };
+
+    const onMouseMove = (mv: MouseEvent) => {
+        const dx = mv.clientX - dragStartPos.current.x;
+        const dy = mv.clientY - dragStartPos.current.y;
+        
+        // Seuil de 5px pour considérer que c'est un drag et pas un clic
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            isDraggingRef.current = true;
+        }
+
+        if (isDraggingRef.current) {
+            setBtnStyle({
+                position: 'fixed',
+                top: `${btnStartPos.current.top + dy}px`,
+                left: `${btnStartPos.current.left + dx}px`,
+                bottom: 'auto',
+                right: 'auto',
+                transition: 'none', // Désactive l'animation pendant le déplacement pour fluidité
+                cursor: 'grabbing'
+            });
+        }
+    };
+
+    const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        
+        // Rétablir une transition douce après le relâchement
+        setBtnStyle(prev => ({ ...prev, cursor: 'grab', transition: 'transform 0.2s' }));
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleBtnClick = (e: React.MouseEvent) => {
+      // Si on a déplacé le bouton, on empêche l'ouverture de la fenêtre
+      if (isDraggingRef.current) {
+          e.stopPropagation();
+          return;
+      }
+      setIsOpen(true);
+  };
+
+  // --- FIN LOGIQUE DRAG ---
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -102,22 +164,24 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
 
   return (
     <>
-      {/* BOUTON FLOTTANT */}
+      {/* BOUTON FLOTTANT - Modifié pour être plus petit et déplaçable */}
       {!isOpen && (
         <button 
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 bg-gradient-to-r from-edc-blue to-blue-600 text-white p-3 md:p-4 rounded-full shadow-2xl hover:scale-110 transition-transform z-50 flex items-center gap-2 animate-bounce-slow"
-          title="Ouvrir Panorama AI"
+          onMouseDown={handleMouseDown}
+          onClick={handleBtnClick}
+          style={btnStyle}
+          className="fixed bottom-6 right-6 bg-gradient-to-r from-edc-blue to-blue-600 text-white p-2 md:p-3 rounded-full shadow-2xl hover:brightness-110 active:scale-95 z-50 flex items-center gap-1.5 cursor-grab"
+          title="Déplacer ou Ouvrir Panorama AI"
         >
-          <Lightbulb size={28} className="text-yellow-300 fill-yellow-300/20" strokeWidth={2} />
-          <span className="font-bold hidden md:inline text-sm tracking-wide">Panorama AI</span>
+          <Lightbulb size={20} className="text-yellow-300 fill-yellow-300/20" strokeWidth={2} />
+          <span className="font-bold hidden md:inline text-xs tracking-wide select-none">Panorama AI</span>
         </button>
       )}
 
       {/* FENÊTRE DE CHAT */}
       {isOpen && (
-        <div className="fixed bottom-6 right-4 left-4 md:left-auto md:right-6 w-auto md:w-96 h-[600px] max-h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col z-50 border border-gray-200">
-          <div className="bg-edc-blue text-white p-4 rounded-t-2xl flex justify-between items-center shadow-md">
+        <div className="fixed bottom-6 right-4 left-4 md:left-auto md:right-6 w-auto md:w-96 h-[600px] max-h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col z-50 border border-gray-200 animate-fade-in-up">
+          <div className="bg-edc-blue text-white p-4 rounded-t-2xl flex justify-between items-center shadow-md cursor-default">
             <div className="flex items-center gap-2">
                 <div className="bg-white/10 p-1.5 rounded-full">
                   <Lightbulb size={18} className="text-yellow-300" />
@@ -169,13 +233,10 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
         </div>
       )}
 
-      {/* MODALE D'IMPRESSION */}
+      {/* MODALE D'IMPRESSION (Code existant inchangé, juste replié pour la clarté) */}
       {reportToPrint && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-0 md:p-4 print:p-0 print:bg-white print:static print:block">
-          
           <div className="bg-white w-full md:max-w-4xl h-full md:h-[90vh] md:rounded-xl shadow-2xl flex flex-col relative overflow-hidden print:overflow-visible print:h-auto print:max-w-none print:shadow-none print:block">
-            
-            {/* Header (Caché à l'impression via no-print) */}
             <div className="flex justify-between items-center p-4 border-b bg-gray-50 rounded-t-xl no-print">
                <h2 className="font-bold text-edc-blue flex items-center gap-2"><FileText size={20}/> Rapport Panorama AI</h2>
                <div className="flex gap-2">
@@ -183,11 +244,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
                  <button onClick={() => setReportToPrint(null)} className="p-2 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-700 transition-colors"><X size={24}/></button>
                </div>
             </div>
-
-            {/* ZONE IMPRIMABLE */}
-            {/* J'ai retiré 'flex-1' pour l'impression car ça casse le flux sur plusieurs pages */}
             <div id="printable-area" className="flex-1 overflow-y-auto p-8 md:p-12 font-serif text-justify leading-relaxed bg-white relative print:overflow-visible print:h-auto print:block print:flex-none">
-               
                <div className="flex justify-between items-center mb-8 border-b-2 border-edc-blue pb-4 print:flex">
                   <div className="flex items-center gap-4">
                     <img src={config.companyLogo} className="h-16 w-auto object-contain" alt="Logo" />
@@ -201,12 +258,9 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
                     <p className="font-mono text-xs text-gray-400 mt-1">ID: {Date.now().toString().slice(-8)}</p>
                   </div>
                </div>
-               
                <div className="prose max-w-none whitespace-pre-wrap text-gray-800 pb-16 print:text-black">
                   {reportToPrint}
                </div>
-
-               {/* Pied de page imprimable */}
                <div className="print-footer hidden text-center text-[10px] text-gray-400 border-t pt-2 w-full mt-8">
                   <p>Document confidentiel - {config.companyName} - Généré le {new Date().toLocaleDateString()} par Panorama AI</p>
                </div>
@@ -215,74 +269,16 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
         </div>
       )}
       
-      {/* CSS MAGIQUE POUR L'IMPRESSION */}
       <style>{`
         @media print {
-          /* 1. Réinitialisation Globale */
-          html, body {
-            height: auto !important;
-            overflow: visible !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
-          }
-
-          /* 2. Tout cacher sauf le rapport */
-          body * {
-            visibility: hidden;
-          }
-
-          /* 3. Configuration de la zone d'impression */
-          #printable-area, #printable-area * {
-            visibility: visible;
-            /* CRUCIAL : Force la couleur noire pour éviter le texte blanc sur blanc */
-            color: black !important; 
-            text-shadow: none !important;
-          }
-
-          /* 4. Positionnement Absolu pour 'sortir' le rapport du contexte React */
-          #printable-area {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            margin: 0;
-            padding: 20px !important;
-            
-            /* Désactive les barres de défilement pour laisser le papier gérer la hauteur */
-            height: auto !important;
-            min-height: 100% !important;
-            overflow: visible !important;
-            display: block !important; /* Casse le Flexbox */
-            
-            background: white !important;
-            z-index: 99999;
-          }
-
-          /* 5. Pied de page */
-          .print-footer {
-            display: block !important;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background: white;
-            padding-bottom: 5px;
-            color: gray !important; /* Le footer peut rester gris */
-          }
-
-          /* 6. Gestion des sauts de page */
-          .prose, p, div {
-            page-break-inside: auto;
-          }
-          h1, h2, h3, tr, img {
-            page-break-after: avoid;
-            page-break-inside: avoid;
-          }
-          
-          .no-print {
-            display: none !important;
-          }
+          html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; background: white !important; }
+          body * { visibility: hidden; }
+          #printable-area, #printable-area * { visibility: visible; color: black !important; text-shadow: none !important; }
+          #printable-area { position: absolute; top: 0; left: 0; width: 100%; margin: 0; padding: 20px !important; height: auto !important; min-height: 100% !important; overflow: visible !important; display: block !important; background: white !important; z-index: 99999; }
+          .print-footer { display: block !important; position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding-bottom: 5px; color: gray !important; }
+          .prose, p, div { page-break-inside: auto; }
+          h1, h2, h3, tr, img { page-break-after: avoid; page-break-inside: avoid; }
+          .no-print { display: none !important; }
         }
       `}</style>
     </>
