@@ -69,7 +69,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
       const totalAssets = activeAssets.length;
       const goodCondition = activeAssets.filter(a => a.state === 'Bon état').length;
       const badCondition = activeAssets.filter(a => ['Défectueux', 'Déprécié', 'Retiré'].includes(a.state)).length;
-      const uniqueLocations = new Set(activeAssets.map(a => a.location)).size;
+      // const uniqueLocations = new Set(activeAssets.map(a => a.location)).size; // KPI Supprimé
 
       // CORRECTION ICI : Prise en compte du champ 'amount' natif
       const totalValue = activeAssets.reduce((sum, asset) => {
@@ -93,7 +93,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
         return sum + (isNaN(val) ? 0 : val);
       }, 0);
 
-      return { totalAssets, goodCondition, badCondition, uniqueLocations, totalValue };
+      return { totalAssets, goodCondition, badCondition, totalValue };
   }, [activeAssets]);
 
   // --- DONNÉES STATIQUES (HAUT DE PAGE) ---
@@ -206,30 +206,34 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
     <div className="space-y-6 animate-fade-in p-3 md:p-6 bg-transparent min-h-screen">
       <h2 className="text-xl md:text-2xl font-bold text-edc-blue border-b pb-2 border-edc-orange">Tableau de Bord</h2>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* KPI Cards - MODIFIÉ : 4 Colonnes au lieu de 5, Site Actif supprimé */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-edc-blue min-w-0">
           <p className="text-gray-500 text-sm uppercase">Total Immobilisations</p>
           <p className="text-3xl font-bold text-gray-800">{kpis.totalAssets}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-yellow-500 min-w-0">
+
+        {/* VALEUR PATRIMOINE - MODIFIÉ pour afficher le montant entier */}
+        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-yellow-500 min-w-0 break-words">
           <p className="text-gray-500 text-sm uppercase">Valeur Patrimoine</p>
-          <p className="text-2xl lg:text-3xl font-bold text-yellow-600 truncate" title={`${kpis.totalValue.toLocaleString('fr-FR')} FCFA`}>
-             {new Intl.NumberFormat('fr-FR', { style: 'decimal', maximumFractionDigits: 0 }).format(kpis.totalValue)} <span className="text-sm">FCFA</span>
+          <p className="text-xl md:text-2xl lg:text-2xl font-bold text-yellow-600 leading-tight whitespace-normal">
+             {new Intl.NumberFormat('fr-FR', { style: 'decimal', maximumFractionDigits: 0 }).format(kpis.totalValue)} 
+             <span className="text-sm text-gray-500 ml-1">FCFA</span>
           </p>
         </div>
+
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500 min-w-0">
           <p className="text-gray-500 text-sm uppercase">Bon État</p>
           <p className="text-3xl font-bold text-green-600">{kpis.goodCondition}</p>
         </div>
+
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-red-500 min-w-0">
           <p className="text-gray-500 text-sm uppercase">Mauvais État</p>
           <p className="text-3xl font-bold text-red-600">{kpis.badCondition}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-edc-orange min-w-0">
-          <p className="text-gray-500 text-sm uppercase">Sites Actifs</p>
-          <p className="text-3xl font-bold text-orange-600">{kpis.uniqueLocations}</p>
-        </div>
+        
+        {/* KPI Sites Actifs SUPPRIMÉ */}
       </div>
 
       {/* --- GRAPHIQUES STATIQUES --- */}
