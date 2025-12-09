@@ -12,7 +12,7 @@ import { LayoutDashboard, Box, Settings, LogOut, Menu, Palette, Check, Moon, Lea
 import { db, auth, firebaseConfig } from './firebase'; 
 import { initializeApp, deleteApp } from "firebase/app";
 import { 
-  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot 
+  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, query, orderBy, limit 
 } from 'firebase/firestore';
 import { 
   signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, getAuth as getAuthUtils
@@ -105,9 +105,14 @@ const App: React.FC = () => {
        unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
          setUsers(snapshot.docs.map(doc => ({...doc.data(), id: doc.id} as User)));
        });
-       unsubscribeLogs = onSnapshot(collection(db, "logs"), (snapshot) => {
+       
+       // --- CORRECTION PERFORMANCE : LIMITATION DES LOGS ---
+       // On ne charge que les 100 derniers logs pour éviter le crash du navigateur
+       const logsQuery = query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(100));
+       
+       unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
          const loadedLogs = snapshot.docs.map(doc => doc.data() as Log);
-         setLogs(loadedLogs.sort((a, b) => b.timestamp - a.timestamp));
+         setLogs(loadedLogs);
        });
     }
 
@@ -236,6 +241,71 @@ const App: React.FC = () => {
     }
   };
 
+  // --- RESTAURATION (SOFT RESTORE) ---
+  const handleRestoreAsset = async (id: string) => {
+    const asset = assets.find(a => a.id === id);
+    if (asset && user) {
+      try {
+        const actorName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+        await updateDoc(doc(db, "assets", id), { isArchived: false });
+        await addLog('UPDATE', `Restauration par ${actorName}`, asset.code);
+      } catch (e: any) {
+         alert("Erreur restauration: " + e.message);
+      }
+    }
+  };
+
+  // --- SUPPRESSION DEFINITIVE (HARD DELETE) ---
+  const handlePermanentDeleteAsset = async (id: string) => {
+     const asset = assets.find(a => a.id === id);
+     if (asset && user) {
+        if(!confirm(`Êtes-vous sûr de vouloir supprimer DÉFINITIVEMENT l'actif ${asset.code} ? Cette action est irréversible.`)) return;
+        try {
+           const actorName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+           await deleteDoc(doc(db, "assets", id));
+           await addLog('DELETE', `Suppression DÉFINITIVE par ${actorName}`, asset.code);
+        } catch (e: any) {
+           alert("Erreur suppression définitive: " + e.message);
+        }
+     }
+  };
+
+  // --- VIDER LA CORBEILLE (MASSIVE HARD DELETE) ---
+  const handleEmptyTrash = async () => {
+    if (!user || !user.permissions.isAdmin) return;
+    
+    // 1. Filtrer les actifs archivés
+    const archivedAssets = assets.filter(a => a.isArchived);
+    if (archivedAssets.length === 0) return;
+
+    try {
+        // Firebase a une limite de 500 opérations par batch
+        const BATCH_SIZE = 450; 
+        const actorName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+        
+        // On découpe en morceaux (chunks)
+        for (let i = 0; i < archivedAssets.length; i += BATCH_SIZE) {
+            const chunk = archivedAssets.slice(i, i + BATCH_SIZE);
+            const batch = writeBatch(db);
+            
+            chunk.forEach(asset => {
+                const docRef = doc(db, "assets", asset.id);
+                batch.delete(docRef);
+            });
+
+            await batch.commit();
+        }
+
+        // On ne crée qu'un seul log pour l'opération de masse pour éviter de surcharger
+        await addLog('DELETE', `VIDAGE CORBEILLE (${archivedAssets.length} éléments) par ${actorName}`, 'MASS_DELETE');
+        alert("Corbeille vidée avec succès.");
+
+    } catch (e: any) {
+        console.error("Erreur vidage corbeille:", e);
+        alert("Erreur lors du vidage de la corbeille: " + e.message);
+    }
+  };
+
   const handleBulkImport = async (importedAssets: Partial<Asset>[]) => {
       let count = 0;
       for (const asset of importedAssets) {
@@ -301,7 +371,6 @@ const App: React.FC = () => {
   if (!user) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center font-sans relative overflow-hidden transition-all duration-500">
-        {/* ... (Code d'arrière plan login inchangé) ... */}
         <div className="absolute inset-0 z-0 bg-[var(--edc-blue)] transition-colors duration-700 overflow-hidden">
              <div className="absolute -top-20 -right-20 opacity-10 animate-[spin_60s_linear_infinite]">
                 <Settings size={600} className="text-white" strokeWidth={0.5}/>
@@ -365,7 +434,6 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-edc-light font-sans transition-colors duration-300">
       <aside className="hidden md:flex flex-col w-64 bg-edc-blue text-[var(--edc-sidebar-text)] shadow-xl transition-colors duration-300">
-        {/* ... (Sidebar Desktop inchangée) ... */}
         <div className="p-6 flex items-center gap-3 border-b border-white/10">
           <img src="/logo.png" alt="Logo" className="w-10 h-10 rounded bg-white object-contain p-1" />
           <span className="font-bold text-lg leading-tight">{config.companyName}</span>
@@ -442,7 +510,6 @@ const App: React.FC = () => {
                   {user.permissions.isAdmin && <button onClick={() => { setCurrentView('admin'); setMobileMenuOpen(false); }} className="flex items-center px-4 py-3 w-full text-left hover:bg-white/5 rounded"><Settings size={18} className="mr-3 opacity-70"/> Paramètre</button>}
               </div>
               
-              {/* --- AJOUT 2 : SÉLECTEUR DE THÈME DANS LE MENU MOBILE --- */}
               <div className="border-t border-white/10 p-2">
                  <p className="px-4 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">Thème</p>
                  <div className="flex gap-2 px-4 overflow-x-auto no-scrollbar pb-2">
@@ -483,11 +550,15 @@ const App: React.FC = () => {
               <AdminPanel 
                 users={users} 
                 logs={logs} 
+                assets={assets}
                 config={config}
                 onUpdateConfig={handleUpdateConfig}
                 onAddUser={handleAddUser}
                 onUpdateUser={handleUpdateUser}
                 onDeleteUser={handleDeleteUser}
+                onRestoreAsset={handleRestoreAsset}
+                onPermanentDeleteAsset={handlePermanentDeleteAsset}
+                onEmptyTrash={handleEmptyTrash} // PASSED
               />
             )}
          </div>
