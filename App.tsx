@@ -4,6 +4,8 @@ import { INITIAL_CONFIG } from './constants';
 import Dashboard from './components/Dashboard';
 import AssetManager from './components/AssetManager';
 import AdminPanel from './components/AdminPanel';
+// AJOUT 1 : Import du composant AiAssistant
+import AiAssistant from './components/AiAssistant';
 import { LayoutDashboard, Box, Settings, LogOut, Menu, Palette, Check, Moon, Leaf, Monitor, Briefcase, Lock, Mail, ChevronRight, Loader2, AlertCircle, Zap, Activity, Fan } from 'lucide-react';
 
 // --- IMPORT FIREBASE ---
@@ -47,7 +49,6 @@ const App: React.FC = () => {
 
   // --- 1. CHARGEMENT INITIAL & GESTION DU THÈME ---
   useEffect(() => {
-    // Charger le thème depuis le localStorage IMMÉDIATEMENT
     const savedTheme = localStorage.getItem('edc-theme');
     if (savedTheme) {
         document.documentElement.setAttribute('data-theme', savedTheme);
@@ -61,7 +62,6 @@ const App: React.FC = () => {
           const userData = userSnap.data();
           setUser({ ...userData, id: firebaseUser.uid } as User);
           
-          // Synchroniser le thème si l'utilisateur en a un préféré en base
           if (userData.preferences?.theme) {
              document.documentElement.setAttribute('data-theme', userData.preferences.theme);
              localStorage.setItem('edc-theme', userData.preferences.theme);
@@ -127,7 +127,6 @@ const App: React.FC = () => {
   }, [user]);
 
   const handleThemeChange = async (newTheme: Theme) => {
-    // Appliquer immédiatement et sauvegarder en local
     document.documentElement.setAttribute('data-theme', newTheme);
     localStorage.setItem('edc-theme', newTheme);
     
@@ -287,65 +286,40 @@ const App: React.FC = () => {
     await deleteDoc(doc(db, "users", id));
   };
 
-  // --- MODIFICATION 1 : ÉCRAN DE CHARGEMENT AVEC TURBINE (au lieu du texte) ---
+  // --- LOADING SCREEN ---
   if (loading) return (
     <div className="flex flex-col h-screen items-center justify-center bg-[var(--edc-bg)]">
-       {/* Animation Turbine */}
        <div className="relative flex items-center justify-center">
-          {/* Cercle extérieur (carter) */}
           <div className="absolute w-24 h-24 border-4 border-gray-200 rounded-full border-t-edc-orange animate-spin"></div>
-          {/* La turbine (hélice) */}
           <Fan size={64} className="text-edc-blue animate-[spin_1s_linear_infinite]" strokeWidth={2.5} />
        </div>
        <p className="mt-4 text-sm font-bold text-[var(--edc-text)] tracking-widest animate-pulse uppercase">Initialisation...</p>
     </div>
   );
 
-  // --- PAGE DE CONNEXION ---
+  // --- LOGIN SCREEN ---
   if (!user) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center font-sans relative overflow-hidden transition-all duration-500">
-        
-        {/* --- ARRIÈRE-PLAN DYNAMIQUE & ENGRENAGES --- */}
+        {/* ... (Code d'arrière plan login inchangé) ... */}
         <div className="absolute inset-0 z-0 bg-[var(--edc-blue)] transition-colors duration-700 overflow-hidden">
-             
-             {/* Engrenage Géant 1 (Animation lente) */}
              <div className="absolute -top-20 -right-20 opacity-10 animate-[spin_60s_linear_infinite]">
                 <Settings size={600} className="text-white" strokeWidth={0.5}/>
              </div>
-             
-             {/* Engrenage Géant 2 (Rotation inverse) */}
              <div className="absolute bottom-0 -left-20 opacity-10 animate-[spin_80s_linear_infinite_reverse]">
                 <Settings size={500} className="text-white" strokeWidth={0.5}/>
              </div>
-
-             {/* Motif "Circuit / Grille Technique" */}
-             <div className="absolute inset-0 opacity-20" 
-                  style={{ 
-                      backgroundImage: `
-                        linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
-                      `,
-                      backgroundSize: '50px 50px'
-                  }}>
-             </div>
-
-             {/* Dégradé radial pour focus central */}
+             <div className="absolute inset-0 opacity-20" style={{backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`, backgroundSize: '50px 50px'}}></div>
              <div className="absolute inset-0 bg-gradient-to-br from-[var(--edc-blue)]/80 via-[var(--edc-blue)]/50 to-[var(--edc-light)]/90"></div>
         </div>
 
-        {/* --- BLOC AUTHENTIFICATION 3D (TAILLE RÉDUITE: max-w-[340px]) --- */}
         <div className="w-full max-w-[340px] px-4 z-10 animate-fade-in">
-              <div className="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-3xl p-6 shadow-2xl relative overflow-hidden group ring-1 ring-white/40 transition-all duration-500 hover:shadow-[0_35px_60px_-15px_rgba(0,0,0,0.6)] hover:scale-[1.02]"
-                   style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)' }}> 
-                
-                {/* Effet de reflet interne Glassmorphism */}
+              <div className="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-3xl p-6 shadow-2xl relative overflow-hidden group ring-1 ring-white/40 transition-all duration-500 hover:shadow-[0_35px_60px_-15px_rgba(0,0,0,0.6)] hover:scale-[1.02]" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)' }}> 
                 <div className="absolute -top-32 -left-32 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
                 <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-bl from-white/5 to-transparent pointer-events-none"></div>
 
                 <div className="text-center mb-6 relative z-10">
                     <div className="relative inline-block mb-2">
-                        {/* Halo dynamique autour du logo */}
                         <div className="absolute inset-0 bg-[var(--edc-orange)] blur-2xl opacity-30 rounded-full"></div>
                         <img src="/logo.png" alt="Logo" className="w-20 h-20 object-contain relative drop-shadow-2xl transform transition-transform duration-500 hover:rotate-3" />
                     </div>
@@ -356,69 +330,31 @@ const App: React.FC = () => {
                 </div>
                 
                 <form onSubmit={handleLogin} className="space-y-4 relative z-10" autoComplete="off">
-                   
                    {loginError && (
                      <div className="bg-red-500/30 border border-red-400/50 text-white px-3 py-2 rounded-xl relative flex items-center gap-2 text-xs animate-pulse backdrop-blur-md shadow-inner">
                         <AlertCircle size={14} className="shrink-0 text-red-200" />
                         <span className="font-medium leading-tight">{loginError}</span>
                      </div>
                    )}
-
                    <div className="space-y-1.5 group">
                       <label className="text-[10px] font-bold text-blue-50 uppercase tracking-wider flex items-center gap-1.5 drop-shadow-md group-focus-within:text-[var(--edc-orange)] transition-colors duration-300">
                           <Mail size={12}/> Email
                       </label>
-                      <input 
-                        type="email" 
-                        required 
-                        autoComplete="off"
-                        placeholder="nom@edc.cm" 
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[var(--edc-orange)] focus:border-white/30 transition-all shadow-inner hover:bg-black/30"
-                        value={loginEmail} 
-                        onChange={e => { setLoginEmail(e.target.value); setLoginError(''); }} 
-                        disabled={isLoggingIn} 
-                      />
+                      <input type="email" required autoComplete="off" placeholder="nom@edc.cm" className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[var(--edc-orange)] focus:border-white/30 transition-all shadow-inner hover:bg-black/30" value={loginEmail} onChange={e => { setLoginEmail(e.target.value); setLoginError(''); }} disabled={isLoggingIn} />
                    </div>
                    <div className="space-y-1.5 group">
                       <label className="text-[10px] font-bold text-blue-50 uppercase tracking-wider flex items-center gap-1.5 drop-shadow-md group-focus-within:text-[var(--edc-orange)] transition-colors duration-300">
                           <Lock size={12}/> Mot de passe
                       </label>
-                      <input 
-                        type="password" 
-                        required 
-                        autoComplete="new-password"
-                        placeholder="••••••••" 
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[var(--edc-orange)] focus:border-white/30 transition-all shadow-inner hover:bg-black/30"
-                        value={loginPass} 
-                        onChange={e => { setLoginPass(e.target.value); setLoginError(''); }} 
-                        disabled={isLoggingIn} 
-                      />
+                      <input type="password" required autoComplete="new-password" placeholder="••••••••" className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[var(--edc-orange)] focus:border-white/30 transition-all shadow-inner hover:bg-black/30" value={loginPass} onChange={e => { setLoginPass(e.target.value); setLoginError(''); }} disabled={isLoggingIn} />
                    </div>
-                   
-                   <button 
-                        type="submit" 
-                        disabled={isLoggingIn} 
-                        className="w-full bg-gradient-to-r from-[var(--edc-orange)] to-orange-600 text-white font-bold py-3 rounded-xl shadow-xl flex items-center justify-center gap-2 mt-6 transition-all transform hover:-translate-y-0.5 hover:shadow-2xl active:translate-y-0 hover:brightness-110 disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden relative text-sm group-hover:shadow-[var(--edc-orange)]/30"
-                    >
-                      {/* Effet de reflet sur le bouton */}
+                   <button type="submit" disabled={isLoggingIn} className="w-full bg-gradient-to-r from-[var(--edc-orange)] to-orange-600 text-white font-bold py-3 rounded-xl shadow-xl flex items-center justify-center gap-2 mt-6 transition-all transform hover:-translate-y-0.5 hover:shadow-2xl active:translate-y-0 hover:brightness-110 disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden relative text-sm group-hover:shadow-[var(--edc-orange)]/30">
                       <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12"></div>
-                      
-                      {isLoggingIn ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          Connexion...
-                        </>
-                      ) : (
-                        <>
-                          ENTRER <ChevronRight size={16} strokeWidth={3}/>
-                        </>
-                      )}
+                      {isLoggingIn ? (<><Loader2 size={16} className="animate-spin" /> Connexion...</>) : (<>ENTRER <ChevronRight size={16} strokeWidth={3}/></>)}
                    </button>
-                   
                 </form>
                 <div className="mt-6 text-center text-[9px] text-white/40 font-medium pt-4 border-t border-white/10 leading-tight">
-                    &copy; {new Date().getFullYear()} Electricity Development Corporation.<br/>
-                    Système Sécurisé.
+                    &copy; {new Date().getFullYear()} Electricity Development Corporation.<br/>Système Sécurisé.
                 </div>
              </div>
         </div>
@@ -426,10 +362,10 @@ const App: React.FC = () => {
     );
   }
 
-  // --- INTERFACE PRINCIPALE (DASHBOARD / ASSETS / ADMIN) ---
   return (
     <div className="flex h-screen bg-edc-light font-sans transition-colors duration-300">
       <aside className="hidden md:flex flex-col w-64 bg-edc-blue text-[var(--edc-sidebar-text)] shadow-xl transition-colors duration-300">
+        {/* ... (Sidebar Desktop inchangée) ... */}
         <div className="p-6 flex items-center gap-3 border-b border-white/10">
           <img src="/logo.png" alt="Logo" className="w-10 h-10 rounded bg-white object-contain p-1" />
           <span className="font-bold text-lg leading-tight">{config.companyName}</span>
@@ -491,7 +427,6 @@ const App: React.FC = () => {
             </div>
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-1 rounded hover:bg-white/10"><Menu size={28} /></button>
          </div>
-         {/* --- MODIFICATION 2 : MENU MOBILE AJUSTÉ --- */}
          {mobileMenuOpen && (
            <div className="md:hidden bg-edc-blue text-white absolute top-full right-0 w-64 z-30 shadow-xl flex flex-col">
               <div className="p-4 bg-black/20 border-b border-white/10 flex items-center gap-3">
@@ -507,7 +442,7 @@ const App: React.FC = () => {
                   {user.permissions.isAdmin && <button onClick={() => { setCurrentView('admin'); setMobileMenuOpen(false); }} className="flex items-center px-4 py-3 w-full text-left hover:bg-white/5 rounded"><Settings size={18} className="mr-3 opacity-70"/> Paramètre</button>}
               </div>
               
-              {/* --- AJOUT : SÉLECTEUR DE THÈME DANS LE MENU MOBILE --- */}
+              {/* --- AJOUT 2 : SÉLECTEUR DE THÈME DANS LE MENU MOBILE --- */}
               <div className="border-t border-white/10 p-2">
                  <p className="px-4 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">Thème</p>
                  <div className="flex gap-2 px-4 overflow-x-auto no-scrollbar pb-2">
@@ -557,6 +492,10 @@ const App: React.FC = () => {
             )}
          </div>
       </main>
+
+      {/* --- AJOUT 1 : COMPOSANT AI ASSISTANT FLOTTANT --- */}
+      <AiAssistant assets={assets} config={config} />
+
     </div>
   );
 };
