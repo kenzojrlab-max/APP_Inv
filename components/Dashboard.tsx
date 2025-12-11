@@ -10,7 +10,7 @@ interface DashboardProps {
   assets: Asset[];
 }
 
-// RÈGLES DE COULEURS STRICTES (Palette demandée)
+// COULEURS
 const STATE_COLORS: Record<string, string> = {
   'Bon état': '#2563EB',       // Bleu
   'Défectueux': '#10B981',     // Vert
@@ -19,17 +19,14 @@ const STATE_COLORS: Record<string, string> = {
   'Retiré': '#EF4444'          // Rouge
 };
 
-// Couleurs génériques pour les autres catégories (Localisation, etc.)
 const GENERIC_COLORS = [
   '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', 
-  '#82ca9d', '#ffc658', '#8dd1e1', '#a4de6c', '#d0ed57',
-  '#404040', '#A0A0A0'
+  '#82ca9d', '#ffc658', '#8dd1e1', '#a4de6c', '#d0ed57'
 ];
 
 const STATE_ORDER = ['Bon état', 'Défectueux', 'En maintenance', 'Déprécié', 'Retiré'];
 const DEFAULT_COLOR = '#9CA3AF';
 
-// Options disponibles pour le graphique dynamique
 const AXIS_OPTIONS = [
   { value: 'location', label: 'Localisation' },
   { value: 'category', label: 'Catégorie' },
@@ -54,13 +51,6 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const isMobile = windowWidth < 640;
-  
-  const pieRadius = {
-    inner: 60,
-    outer: 80
-  };
-  
   const activeAssets = useMemo(() => assets.filter(a => !a.isArchived), [assets]);
   
   // KPI Calculs
@@ -90,7 +80,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
       return { totalAssets, goodCondition, badCondition, totalValue };
   }, [activeAssets]);
 
-  // --- DONNÉES STATIQUES (HAUT DE PAGE) ---
+  // --- DONNÉES STATIQUES ---
   const dataByState = useMemo(() => {
     const byState = activeAssets.reduce((acc, curr) => {
       acc[curr.state] = (acc[curr.state] || 0) + 1;
@@ -110,7 +100,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
     return Object.keys(byYear).sort().map(k => ({ name: k, count: byYear[k] }));
   }, [activeAssets]);
 
-  // --- DONNÉES DYNAMIQUES (GRAPHIQUE PERSONNALISÉ) ---
+  // --- DONNÉES DYNAMIQUES ---
   const customChartData = useMemo(() => {
     const map: Record<string, Record<string, number>> = {};
     const groupKeys = new Set<string>();
@@ -179,24 +169,25 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
       {/* --- GRAPHIQUES STATIQUES --- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* DONUT - MODIFIÉ AVEC LÉGENDE À DROITE */}
+        {/* DONUT - OPTIMISÉ MAXIMAL (GRAPHIQUE GROS, LÉGENDE PETITE) */}
         <div className="bg-white p-4 rounded-lg shadow-md min-w-0 flex flex-col">
-          <h3 className="text-lg font-semibold mb-4 text-center text-gray-800">Vue Globale par État</h3>
+          <h3 className="text-lg font-semibold mb-2 text-center text-gray-800">Vue Globale par État</h3>
           
           <div className="flex flex-col sm:flex-row items-center h-full min-h-[300px]">
-            {/* Zone Graphique */}
-            <div className="flex-1 w-full h-[250px] sm:h-[300px]">
+            {/* Zone Graphique : Prend tout l'espace disponible */}
+            <div className="flex-1 w-full h-[220px] sm:h-[300px] min-w-0">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                <PieChart>
                   <Pie 
                     data={dataByState} 
                     cx="50%" 
                     cy="50%" 
-                    labelLine={false} // Désactivation des lignes
-                    label={false}     // Désactivation des textes sur le chart
-                    innerRadius={pieRadius.inner} 
-                    outerRadius={pieRadius.outer} 
-                    paddingAngle={2} 
+                    labelLine={false} 
+                    label={false}
+                    // RAYONS AUGMENTÉS : Le graphique sera beaucoup plus gros
+                    innerRadius="60%" 
+                    outerRadius="85%" 
+                    paddingAngle={3} 
                     dataKey="value"
                   >
                     {dataByState.map((entry, index) => (
@@ -208,18 +199,18 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
               </ResponsiveContainer>
             </div>
 
-            {/* Zone Légende Latérale */}
-            <div className="w-full sm:w-48 flex flex-col justify-center gap-3 p-4 sm:border-l border-gray-100">
+            {/* Zone Légende : Réduite au maximum (w-28 ~ 112px) */}
+            <div className="w-full sm:w-28 flex flex-col justify-center gap-2 p-1 sm:border-l border-gray-100">
                {dataByState.map((entry) => (
-                 <div key={entry.name} className="flex items-center gap-3">
+                 <div key={entry.name} className="flex items-center gap-1.5">
                     <span 
-                      className="w-4 h-4 rounded-full shrink-0 shadow-sm" 
+                      className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" 
                       style={{ backgroundColor: STATE_COLORS[entry.name] || DEFAULT_COLOR }}
                     ></span>
-                    <div className="flex flex-col">
-                       <span className="text-sm font-semibold text-gray-700">{entry.name}</span>
-                       <span className="text-xs text-gray-500 font-medium">
-                         {((entry.value / kpis.totalAssets) * 100).toFixed(1)}% <span className="text-gray-400">({entry.value})</span>
+                    <div className="flex flex-col min-w-0">
+                       <span className="text-[10px] font-bold text-gray-700 leading-none truncate">{entry.name}</span>
+                       <span className="text-[9px] text-gray-500 font-medium leading-none mt-0.5">
+                         {((entry.value / kpis.totalAssets) * 100).toFixed(0)}% <span className="text-gray-400">({entry.value})</span>
                        </span>
                     </div>
                  </div>
