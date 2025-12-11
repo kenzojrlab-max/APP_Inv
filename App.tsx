@@ -496,7 +496,8 @@ const App: React.FC = () => {
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-1 rounded hover:bg-white/10"><Menu size={28} /></button>
          </div>
          {mobileMenuOpen && (
-           <div className="md:hidden bg-edc-blue text-white absolute top-full right-0 w-64 z-30 shadow-xl flex flex-col">
+           // CHANGEMENT: absolute -> fixed, top-full -> top-14, ajout de bottom-0 et overflow-y-auto
+           <div className="md:hidden bg-edc-blue text-white fixed top-14 right-0 bottom-0 w-64 z-50 shadow-xl flex flex-col overflow-y-auto border-l border-white/10">
               <div className="p-4 bg-black/20 border-b border-white/10 flex items-center gap-3">
                  <div className="w-10 h-10 rounded-full bg-edc-orange flex items-center justify-center text-white font-bold text-lg shrink-0 border-2 border-white/20">{user.firstName[0]}</div>
                  <div className="min-w-0">
