@@ -33,7 +33,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
   const btnStartPos = useRef({ top: 0, left: 0 });
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Empêche la sélection de texte pendant le drag
     if (e.button !== 0) return; // Seulement clic gauche
 
     const btn = e.currentTarget as HTMLButtonElement;
@@ -47,7 +46,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
         const dx = mv.clientX - dragStartPos.current.x;
         const dy = mv.clientY - dragStartPos.current.y;
         
-        // Seuil de 5px pour considérer que c'est un drag et pas un clic
         if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
             isDraggingRef.current = true;
         }
@@ -59,7 +57,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
                 left: `${btnStartPos.current.left + dx}px`,
                 bottom: 'auto',
                 right: 'auto',
-                transition: 'none', // Désactive l'animation pendant le déplacement pour fluidité
+                transition: 'none',
                 cursor: 'grabbing'
             });
         }
@@ -68,8 +66,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
     const onMouseUp = () => {
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
-        
-        // Rétablir une transition douce après le relâchement
         setBtnStyle(prev => ({ ...prev, cursor: 'grab', transition: 'transform 0.2s' }));
     };
 
@@ -78,14 +74,12 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
   };
 
   const handleBtnClick = (e: React.MouseEvent) => {
-      // Si on a déplacé le bouton, on empêche l'ouverture de la fenêtre
       if (isDraggingRef.current) {
           e.stopPropagation();
           return;
       }
       setIsOpen(true);
   };
-
   // --- FIN LOGIQUE DRAG ---
 
   useEffect(() => {
@@ -113,26 +107,34 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+      // --- MODIFICATION MAJEURE ICI : CONTEXTE ENRICHI ---
+      // On inclut l'année, la date, le code, le détenteur, etc.
       const dataContext = assets.map(a => 
-        `- ${a.name} (${a.category}) [Etat: ${a.state}] à ${a.location}. Valeur: ${a.amount || 0} ${a.unit || ''}`
+        `- [${a.code}] ${a.name} (${a.category}) | Année: ${a.acquisitionYear} | Date Enreg: ${a.registrationDate} | Loc: ${a.location} (Porte: ${a.door || 'N/A'}) | Etat: ${a.state} | Détenteur: ${a.holder || 'Aucun'} (${a.holderPresence}) | Valeur: ${a.amount || 0} ${a.unit || ''}`
       ).join('\n');
 
       const prompt = `
         NOM DE L'ASSISTANT: Panorama AI
-        CONTEXTE: Tu es une IA experte en audit pour l'entreprise ${config.companyName}.
-        DONNÉES INVENTAIRE:
+        CONTEXTE: Tu es une IA experte en audit et gestion de patrimoine pour l'entreprise ${config.companyName}.
+        
+        DONNÉES INVENTAIRE EXHAUSTIVES:
         ${dataContext}
+        
         DEMANDE UTILISATEUR: "${userMsg.text}"
-        CONSIGNES:
-        - Tu t'appelles "Panorama AI".
-        - Si on te demande un rapport : structure-le proprement (Markdown) avec des titres.
-        - Sois professionnel, précis et synthétique.
+        
+        CONSIGNES STRICTES:
+        1. Analyse TOUTES les données fournies ci-dessus.
+        2. Si l'utilisateur demande des acquisitions pour une année spécifique (ex: 2025), regarde le champ "Année" ou "Date Enreg".
+        3. Si l'utilisateur demande un rapport, structure-le proprement en Markdown (Titres ##, Listes à puces, Tableaux si pertinent).
+        4. Inclus des totaux et des sommaires (valeur totale, nombre d'articles) quand c'est pertinent.
+        5. Sois professionnel, précis et synthétique.
+        6. Si aucune donnée ne correspond, dis-le clairement.
       `;
 
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const aiText = response.text();
-      const isReport = aiText.length > 200 || aiText.includes('##');
+      const isReport = aiText.length > 200 || aiText.includes('##') || aiText.includes('|');
 
       setMessages(prev => [...prev, { 
         id: (Date.now() + 1).toString(), 
@@ -164,7 +166,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
 
   return (
     <>
-      {/* BOUTON FLOTTANT - Icone seule, sans fond, couleur thématique */}
+      {/* BOUTON FLOTTANT */}
       {!isOpen && (
         <button 
           onMouseDown={handleMouseDown}
@@ -173,7 +175,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
           className="fixed bottom-6 right-6 z-50 flex items-center justify-center p-2 cursor-grab hover:scale-125 transition-transform active:scale-95 group"
           title="Déplacer ou Ouvrir Panorama AI"
         >
-          {/* L'icône utilise text-edc-blue pour s'adapter au thème et un drop-shadow pour la visibilité */}
           <Lightbulb 
             size={36} 
             className="text-edc-blue drop-shadow-xl filter transition-all duration-300 group-hover:drop-shadow-2xl" 
@@ -264,6 +265,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
                     <p className="font-mono text-xs text-gray-400 mt-1">ID: {Date.now().toString().slice(-8)}</p>
                   </div>
                </div>
+               {/* Utilisation de react-markdown si disponible ou affichage direct formaté */}
                <div className="prose max-w-none whitespace-pre-wrap text-gray-800 pb-16 print:text-black">
                   {reportToPrint}
                </div>
