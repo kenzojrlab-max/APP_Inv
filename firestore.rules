@@ -1,35 +1,35 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // Fonctions d'aide
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isAdmin() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.isAdmin == true;
     }
-    
+
     function canCreate() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.canCreate == true;
     }
 
     function canUpdate() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.canUpdate == true;
     }
 
-    // --- RÈGLES ---
+    // --- REGLES ---
 
-    // Utilisateurs : lecture pour soi-même ou admin, écriture admin seulement
+    // Utilisateurs : lecture authentifiee, ecriture admin seulement
     match /users/{userId} {
-      allow read: if isAuthenticated(); 
+      allow read: if isAuthenticated();
       allow create, update, delete: if isAdmin();
     }
-    
+
     // Immobilisations (Assets)
     match /assets/{assetId} {
       allow read: if isAuthenticated();
@@ -37,17 +37,17 @@ service cloud.firestore {
       allow update: if canUpdate();
       allow delete: if isAdmin();
     }
-    
-    // Logs (Audit)
+
+    // Logs (Audit) - immuables
     match /logs/{logId} {
       allow read: if isAdmin();
       allow create: if isAuthenticated();
-      allow update, delete: if false; // Impossible de falsifier l'historique
+      allow update, delete: if false;
     }
-    
-    // Configuration système
+
+    // Configuration systeme - lecture authentifiee, ecriture admin
     match /parametre/{docId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
   }

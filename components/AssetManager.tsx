@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Asset, AppConfig, User } from '../types';
-import { Search, Plus, Edit, Trash2, X, Save, FileSpreadsheet, Eye, AlertTriangle, Upload, Download, ChevronLeft, ChevronRight, Filter, RotateCcw } from 'lucide-react';
+import { Search, Plus, Trash2, FileSpreadsheet, Upload, Download, Filter, RotateCcw } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import AssetTable from './assets/AssetTable';
+import AssetFormModal from './assets/AssetFormModal';
+import ConfirmDialog from './shared/ConfirmDialog';
 
 interface AssetManagerProps {
   assets: Asset[];
@@ -15,1099 +18,369 @@ interface AssetManagerProps {
 const ITEMS_PER_PAGE = 50;
 
 const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSave, onImport, onDelete }) => {
-  // --- STATES DE RECHERCHE & FILTRES ---
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterState, setFilterState] = useState('');
-
   const [currentPage, setCurrentPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
-
   const [isViewMode, setIsViewMode] = useState(false);
-
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [assetToDeleteId, setAssetToDeleteId] = useState<string | null>(null);
   const [modificationReason, setModificationReason] = useState('');
   const [pendingAssetData, setPendingAssetData] = useState<Asset | null>(null);
-  const [previewCode, setPreviewCode] = useState<string>('');
-
-  // --- STATE : SÉLECTION MULTIPLE ---
+  const [previewCode, setPreviewCode] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // --- REFS POUR LE SCROLL SYNC ---
-  const topScrollRef = useRef<HTMLDivElement>(null);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const [tableScrollWidth, setTableScrollWidth] = useState(0);
 
   const initialFormState: Partial<Asset> = {
     registrationDate: new Date().toISOString().split('T')[0],
     acquisitionYear: new Date().getFullYear().toString(),
-    location: '',
-    category: '',
-    name: '',
-    state: config.states[0] || 'Bon état',
-    holderPresence: config.holderPresences[0] || 'Présent',
-    description: '',
-    door: '',
-    holder: '',
-    observation: '',
-    photoUrl: '',
-    unit: '', // Initialisé à vide pour le texte libre
-    amount: 0,
-    customAttributes: {} 
+    location: '', category: '', name: '',
+    state: config.states[0] || 'Bon etat',
+    holderPresence: config.holderPresences[0] || 'Present',
+    description: '', door: '', holder: '', observation: '', photoUrl: '',
+    unit: '', amount: 0, customAttributes: {}
   };
-
   const [formData, setFormData] = useState<Partial<Asset>>(initialFormState);
 
-  // --- LOGIQUE DE FILTRAGE AVANCÉE ---
+  // --- FILTERING ---
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
-      // 1. Filtre Global (Texte) - INCLUT L'UNITÉ ET LA PORTE
+      const s = searchTerm.toLowerCase();
       const matchesSearch = !searchTerm || (
-        a.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.holder.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (a.unit && a.unit.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (a.door && a.door.toLowerCase().includes(searchTerm.toLowerCase())) // AJOUTÉ : Recherche par porte
+        a.code.toLowerCase().includes(s) || a.name.toLowerCase().includes(s) ||
+        a.holder.toLowerCase().includes(s) || a.location.toLowerCase().includes(s) ||
+        (a.unit && a.unit.toLowerCase().includes(s)) ||
+        (a.door && a.door.toLowerCase().includes(s))
       );
-
-      const matchesLocation = !filterLocation || a.location === filterLocation;
-      const matchesCategory = !filterCategory || a.category === filterCategory;
-      const matchesState = !filterState || a.state === filterState;
-
-      return !a.isArchived && matchesSearch && matchesLocation && matchesCategory && matchesState;
+      return !a.isArchived && matchesSearch &&
+        (!filterLocation || a.location === filterLocation) &&
+        (!filterCategory || a.category === filterCategory) &&
+        (!filterState || a.state === filterState);
     });
   }, [assets, searchTerm, filterLocation, filterCategory, filterState]);
 
   const totalPages = Math.ceil(filteredAssets.length / ITEMS_PER_PAGE);
   const paginatedAssets = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredAssets.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredAssets.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredAssets, currentPage]);
 
-  // Reset page and selection on filter change
-  useEffect(() => {
-    setCurrentPage(1);
-    setSelectedIds(new Set());
-  }, [searchTerm, filterLocation, filterCategory, filterState]);
+  useEffect(() => { setCurrentPage(1); setSelectedIds(new Set()); },
+    [searchTerm, filterLocation, filterCategory, filterState]);
 
-  // --- LOGIQUE SYNCHRONISATION SCROLL ---
-  useEffect(() => {
-    if (tableContainerRef.current) {
-      setTableScrollWidth(tableContainerRef.current.scrollWidth);
-    }
-  }, [paginatedAssets, isModalOpen]);
-
-  const handleSyncScroll = (source: React.RefObject<HTMLDivElement>, target: React.RefObject<HTMLDivElement>) => {
-    if (source.current && target.current) {
-       target.current.scrollLeft = source.current.scrollLeft;
-    }
-  };
-
+  // --- FIELD CONFIG ---
   const getFieldConfig = (key: string, defaultLabel: string) => {
     const field = config.coreFields?.find(f => f.key === key);
-    return {
-      label: field?.label || defaultLabel,
-      isVisible: field ? field.isVisible : true
-    };
+    return { label: field?.label || defaultLabel, isVisible: field ? field.isVisible : true };
   };
-
   const fields = {
-     door: getFieldConfig('door', 'Porte'),
-     holder: getFieldConfig('holder', 'Détenteur'),
-     desc: getFieldConfig('description', 'Description'),
-     obs: getFieldConfig('observation', 'Observation'),
-     photo: getFieldConfig('photoUrl', 'Photo'),
-     regDate: getFieldConfig('registrationDate', 'Date d\'enregistrement'),
+    door: getFieldConfig('door', 'Porte'),
+    holder: getFieldConfig('holder', 'Detenteur'),
+    desc: getFieldConfig('description', 'Description'),
+    obs: getFieldConfig('observation', 'Observation'),
+    photo: getFieldConfig('photoUrl', 'Photo'),
+    regDate: getFieldConfig('registrationDate', "Date d'enregistrement"),
   };
 
-  // --- LOGIQUE DE SÉLECTION (GLOBALE) ---
+  // --- SELECTION ---
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      const allFilteredIds = filteredAssets.map(a => a.id);
-      setSelectedIds(new Set(allFilteredIds));
-    } else {
-      setSelectedIds(new Set());
-    }
+    setSelectedIds(e.target.checked ? new Set(filteredAssets.map(a => a.id)) : new Set());
   };
-
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
     });
   };
-
   const isAllSelected = filteredAssets.length > 0 && selectedIds.size === filteredAssets.length;
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredAssets.length;
 
-  // --- LOGIQUE SUPPRESSION ---
-  const openBulkDeleteModal = () => {
-    if (selectedIds.size === 0) return;
-    setAssetToDeleteId(null);
-    setIsDeleteModalOpen(true);
-  };
-
-  const openDeleteModal = (id: string) => {
-    setAssetToDeleteId(id);
-    setIsDeleteModalOpen(true);
-  };
-
+  // --- DELETE ---
+  const openDeleteModal = (id: string) => { setAssetToDeleteId(id); setIsDeleteModalOpen(true); };
+  const openBulkDeleteModal = () => { if (selectedIds.size > 0) { setAssetToDeleteId(null); setIsDeleteModalOpen(true); } };
   const confirmDelete = () => {
-    if (assetToDeleteId) {
-      onDelete(assetToDeleteId);
-      setAssetToDeleteId(null);
-    } else {
-      selectedIds.forEach(id => onDelete(id));
-      setSelectedIds(new Set());
-    }
+    if (assetToDeleteId) { onDelete(assetToDeleteId); setAssetToDeleteId(null); }
+    else { selectedIds.forEach(id => onDelete(id)); setSelectedIds(new Set()); }
     setIsDeleteModalOpen(false);
   };
 
-  // --- MODAL & FORM ---
+  // --- CODE GENERATION ---
   useEffect(() => {
     if (!editingAsset && isModalOpen) {
-      let code = "";
+      let code = '';
       if (formData.acquisitionYear) code += formData.acquisitionYear;
-      if (formData.location) code += (code ? "-" : "") + formData.location;
-      if (formData.category) code += (code ? "-" : "") + formData.category;
-
+      if (formData.location) code += (code ? '-' : '') + formData.location;
+      if (formData.category) code += (code ? '-' : '') + formData.category;
       if (formData.acquisitionYear && formData.location && formData.category) {
         const prefix = `${formData.acquisitionYear}-${formData.location}-${formData.category}`;
-        const existingCodes = assets
-          .filter(a => a.code.startsWith(prefix))
-          .map(a => {
-             const parts = a.code.split('-');
-             return parts.length === 4 ? parseInt(parts[3], 10) : 0;
-          });
-        
-        const maxSeq = existingCodes.length > 0 ? Math.max(...existingCodes) : 0;
-        const nextSeq = String(maxSeq + 1).padStart(4, '0');
-        code += `-${nextSeq}`;
+        const nums = assets.filter(a => a.code.startsWith(prefix))
+          .map(a => { const p = a.code.split('-'); return p.length === 4 ? parseInt(p[3], 10) : 0; });
+        code += `-${String((nums.length > 0 ? Math.max(...nums) : 0) + 1).padStart(4, '0')}`;
       }
       setPreviewCode(code);
     }
   }, [formData.acquisitionYear, formData.location, formData.category, assets, isModalOpen, editingAsset]);
 
-  const openCreateModal = () => {
-    setEditingAsset(null);
-    setFormData(initialFormState);
-    setPreviewCode('');
-    setIsViewMode(false);
-    setIsModalOpen(true);
-  };
-
-  const openEditModal = (asset: Asset) => {
-    setEditingAsset(asset);
-    setFormData({ ...asset, customAttributes: asset.customAttributes || {} });
-    setPreviewCode(asset.code);
-    setIsViewMode(false);
-    setIsModalOpen(true);
-  };
-
-  const openViewModal = (asset: Asset) => {
-    setEditingAsset(asset);
-    setFormData({ ...asset, customAttributes: asset.customAttributes || {} });
-    setPreviewCode(asset.code);
-    setIsViewMode(true);
-    setIsModalOpen(true);
-  };
+  // --- MODAL ---
+  const openCreateModal = () => { setEditingAsset(null); setFormData(initialFormState); setPreviewCode(''); setIsViewMode(false); setIsModalOpen(true); };
+  const openEditModal = (asset: Asset) => { setEditingAsset(asset); setFormData({ ...asset, customAttributes: asset.customAttributes || {} }); setPreviewCode(asset.code); setIsViewMode(false); setIsModalOpen(true); };
+  const openViewModal = (asset: Asset) => { setEditingAsset(asset); setFormData({ ...asset, customAttributes: asset.customAttributes || {} }); setPreviewCode(asset.code); setIsViewMode(true); setIsModalOpen(true); };
 
   const handleInputChange = (field: keyof Asset, value: any) => {
     setFormData(prev => {
-      const newData = { ...prev, [field]: value };
-      if (field === 'category') {
-        newData.name = ''; 
-      }
-      return newData;
+      const d = { ...prev, [field]: value };
+      if (field === 'category') d.name = '';
+      return d;
     });
   };
-
   const handleCustomAttributeChange = (key: string, value: any) => {
-     setFormData(prev => ({
-       ...prev,
-       customAttributes: {
-           ...(prev.customAttributes || {}),
-           [key]: value
-       }
-     }));
+    setFormData(prev => ({ ...prev, customAttributes: { ...(prev.customAttributes || {}), [key]: value } }));
   };
-
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        handleInputChange('photoUrl', reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (file) { const r = new FileReader(); r.onloadend = () => handleInputChange('photoUrl', r.result as string); r.readAsDataURL(file); }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isViewMode) return;
-
-    if (!formData.location || !formData.category || !formData.name) {
-      alert("Veuillez remplir les champs obligatoires (Localisation, Catégorie, Nom)");
-      return;
-    }
-
-    const assetToSave = { ...formData };
-    
+    if (!formData.location || !formData.category || !formData.name) { alert('Veuillez remplir les champs obligatoires (Localisation, Categorie, Nom)'); return; }
+    const toSave = { ...formData };
     if (!editingAsset) {
-      if (!formData.acquisitionYear || !formData.location || !formData.category) {
-        alert("Impossible de générer le code complet. Vérifiez l'année, la localisation et la catégorie.");
-        return;
-      }
-      assetToSave.code = previewCode;
+      if (!formData.acquisitionYear || !formData.location || !formData.category) { alert('Impossible de generer le code complet.'); return; }
+      toSave.code = previewCode;
     }
-
     if (editingAsset) {
-      const criticalFields: (keyof Asset)[] = ['location', 'acquisitionYear', 'name', 'category', 'door', 'state', 'holderPresence', 'amount', 'unit'];
-      const hasCriticalChange = criticalFields.some(field => formData[field] !== editingAsset[field]);
-
-      if (hasCriticalChange) {
-        setPendingAssetData(assetToSave as Asset);
-        setShowReasonModal(true);
-        return;
-      }
+      const critical: (keyof Asset)[] = ['location', 'acquisitionYear', 'name', 'category', 'door', 'state', 'holderPresence', 'amount', 'unit'];
+      if (critical.some(f => formData[f] !== editingAsset[f])) { setPendingAssetData(toSave as Asset); setShowReasonModal(true); return; }
     }
-
-    finalizeSave(assetToSave as Asset, !editingAsset);
+    finalizeSave(toSave as Asset, !editingAsset);
   };
-
   const finalizeSave = (data: Asset, isNew: boolean, reason?: string) => {
     onSave(data, isNew, reason);
-    setIsModalOpen(false);
-    setShowReasonModal(false);
-    setModificationReason('');
-    setPendingAssetData(null);
+    setIsModalOpen(false); setShowReasonModal(false); setModificationReason(''); setPendingAssetData(null);
   };
 
+  // --- EXCEL EXPORT ---
   const exportToExcel = () => {
-    const dataToExport = filteredAssets.map(asset => {
+    const rows = filteredAssets.map(a => {
       const row: any = {
-        "Code Inventaire": asset.code,
-        "Nom": asset.name,
-        "Catégorie": `${asset.category} - ${config.categoriesDescriptions[asset.category] || ''}`,
-        "Localisation": asset.location,
-        "Année Acquisition": asset.acquisitionYear,
-        "Unité": asset.unit,
-        "Montant": asset.amount,
-        [fields.regDate.label]: asset.registrationDate,
-        "État": asset.state,
-        [fields.holder.label]: asset.holder,
-        "Présence Détenteur": asset.holderPresence,
-        [fields.door.label]: asset.door,
-        [fields.desc.label]: asset.description,
-        [fields.obs.label]: asset.observation,
+        'Code Inventaire': a.code, 'Nom': a.name,
+        'Categorie': `${a.category} - ${config.categoriesDescriptions[a.category] || ''}`,
+        'Localisation': a.location, 'Annee Acquisition': a.acquisitionYear,
+        'Unite': a.unit, 'Montant': a.amount,
+        [fields.regDate.label]: a.registrationDate, 'Etat': a.state,
+        [fields.holder.label]: a.holder, 'Presence Detenteur': a.holderPresence,
+        [fields.door.label]: a.door, [fields.desc.label]: a.description,
+        [fields.obs.label]: a.observation,
       };
-
-      if (config.customFields) {
-        config.customFields.forEach(field => {
-          if (!field.isArchived) {
-             row[field.label] = asset.customAttributes?.[field.id] || '';
-          }
-        });
-      }
-
+      config.customFields?.forEach(f => { if (!f.isArchived) row[f.label] = a.customAttributes?.[f.id] || ''; });
       return row;
     });
-
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const wscols = Object.keys(dataToExport[0] || {}).map(k => ({ wch: k.length + 10 }));
-    worksheet['!cols'] = wscols;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventaire EDC");
-    XLSX.writeFile(workbook, `Inventaire_EDC_${new Date().toISOString().slice(0,10)}.xlsx`);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = Object.keys(rows[0] || {}).map(k => ({ wch: k.length + 10 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventaire EDC');
+    XLSX.writeFile(wb, `Inventaire_EDC_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const downloadImportTemplate = () => {
-      const templateRow: any = {
-          "Code Inventaire": "2024-EDC-AA-0001",
-          "Nom": "Agrafeuse géante",
-          "Catégorie": "AA - Matériel de bureau",
-          "Localisation": "EDC",
-          "Année Acquisition": "2024",
-          "Unité": "Pce",
-          "Montant": "15000",
-          [fields.regDate.label]: "2024-01-01",
-          "État": "Bon état",
-          [fields.holder.label]: "Jean Dupont",
-          "Présence Détenteur": "Présent",
-          [fields.door.label]: "101",
-          [fields.desc.label]: "Description...",
-          [fields.obs.label]: "Observation...",
-      };
-
-      if (config.customFields) {
-          config.customFields.forEach(field => {
-              if (!field.isArchived) {
-                  templateRow[field.label] = field.type === 'date' ? '2024-01-01' : '';
-              }
-          });
-      }
-
-      const worksheet = XLSX.utils.json_to_sheet([templateRow]);
-      const wscols = Object.keys(templateRow).map(k => ({ wch: k.length + 5 }));
-      worksheet['!cols'] = wscols;
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Modèle Import");
-      XLSX.writeFile(workbook, `Modele_Import_EDC.xlsx`);
+    const t: any = {
+      'Code Inventaire': '2024-EDC-AA-0001', 'Nom': 'Agrafeuse geante',
+      'Categorie': 'AA - Materiel de bureau', 'Localisation': 'EDC',
+      'Annee Acquisition': '2024', 'Unite': 'Pce', 'Montant': '15000',
+      [fields.regDate.label]: '2024-01-01', 'Etat': 'Bon etat',
+      [fields.holder.label]: 'Jean Dupont', 'Presence Detenteur': 'Present',
+      [fields.door.label]: '101', [fields.desc.label]: 'Description...',
+      [fields.obs.label]: 'Observation...',
+    };
+    config.customFields?.forEach(f => { if (!f.isArchived) t[f.label] = f.type === 'date' ? '2024-01-01' : ''; });
+    const ws = XLSX.utils.json_to_sheet([t]);
+    ws['!cols'] = Object.keys(t).map(k => ({ wch: k.length + 5 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Modele Import');
+    XLSX.writeFile(wb, 'Modele_Import_EDC.xlsx');
   };
 
-  const triggerImport = () => {
-    if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-        fileInputRef.current.click();
-    }
-  };
-
+  // --- EXCEL IMPORT ---
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!['.xlsx', '.xls'].includes(ext)) { alert('Format invalide. Utilisez .xlsx ou .xls'); return; }
     const reader = new FileReader();
     reader.onload = (evt) => {
-        try {
-            const arrayBuffer = evt.target?.result;
-            const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
-            const wsname = wb.SheetNames[0];
-            const ws = wb.Sheets[wsname];
-            const data = XLSX.utils.sheet_to_json(ws);
-            if (!data || data.length === 0) {
-                alert("Le fichier semble vide ou illisible.");
-                return;
-            }
-            processImportedData(data);
-        } catch (error) {
-            console.error("Erreur lecture Excel:", error);
-            alert("Erreur critique lors de la lecture du fichier Excel.");
-        }
+      try {
+        const wb = XLSX.read(evt.target?.result, { type: 'array', cellDates: true });
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        if (!data?.length) { alert('Le fichier semble vide.'); return; }
+        processImportedData(data);
+      } catch { alert('Erreur lors de la lecture du fichier Excel.'); }
     };
     reader.readAsArrayBuffer(file);
   };
 
   const processImportedData = (data: any[]) => {
-      const formatDate = (val: any) => {
-         if (val instanceof Date) {
-            return val.toISOString().split('T')[0];
-         }
-         if (typeof val === 'string' && val.trim() !== '') {
-            return val;
-         }
-         return new Date().toISOString().split('T')[0];
+    const fmtDate = (v: any) => v instanceof Date ? v.toISOString().split('T')[0] : (typeof v === 'string' && v.trim() ? v : new Date().toISOString().split('T')[0]);
+    const missing = ['Code Inventaire', 'Nom', 'Categorie', 'Localisation'].filter(c => data[0][c] === undefined);
+    if (missing.length) { alert(`Colonnes manquantes: ${missing.join(', ')}`); return; }
+    const errors: string[] = [], seen = new Set<string>(), parsed: Partial<Asset>[] = [];
+    let dupes = 0, existing = 0;
+    data.forEach((row: any, i: number) => {
+      const code = row['Code Inventaire'] ? String(row['Code Inventaire']).trim() : '';
+      if (!code) return;
+      if (seen.has(code)) { dupes++; return; }
+      seen.add(code);
+      if (assets.some(a => a.code === code)) { existing++; return; }
+      let rawCat = row['Categorie'] ? String(row['Categorie']).trim() : '';
+      let cc = (rawCat.includes('-') ? rawCat.split('-')[0] : rawCat.includes(' ') ? rawCat.split(' ')[0] : rawCat).trim().toUpperCase();
+      if (!config.categories[cc]) errors.push(`Ligne ${i + 2}: Categorie '${cc}' inexistante.`);
+      const a: Partial<Asset> = {
+        code, name: row['Nom'] || '', category: cc, location: row['Localisation'] || '',
+        acquisitionYear: row['Annee Acquisition'] ? String(row['Annee Acquisition']) : '',
+        state: row['Etat'] || config.states[0], holderPresence: row['Presence Detenteur'] || config.holderPresences[0],
+        registrationDate: fmtDate(row[fields.regDate.label]), holder: row[fields.holder.label] || '',
+        door: row[fields.door.label] || '', description: row[fields.desc.label] || '',
+        observation: row[fields.obs.label] || '', unit: row['Unite'] || '',
+        amount: row['Montant'] ? parseFloat(String(row['Montant']).replace(/[^0-9.-]+/g, '')) : 0,
+        customAttributes: {}
       };
-
-      const firstRow = data[0];
-      const requiredColumns = ["Code Inventaire", "Nom", "Catégorie", "Localisation"];
-      const missingColumns = requiredColumns.filter(col => firstRow[col] === undefined);
-
-      if (missingColumns.length > 0) {
-          alert(`ERREUR FORMAT : Le fichier ne correspond pas au modèle attendu.\n\nColonnes manquantes : ${missingColumns.join(', ')}\n\nVeuillez utiliser le bouton "Télécharger un Modèle".`);
-          return;
-      }
-
-      let validationErrors: string[] = [];
-      let duplicateInExcelCount = 0;
-      let existingInDbCount = 0;
-      const seenCodes = new Set<string>();
-      const parsedAssets: Partial<Asset>[] = [];
-
-      data.forEach((row: any, index: number) => {
-          const code = row["Code Inventaire"] ? String(row["Code Inventaire"]).trim() : "";
-          if (!code) return; 
-
-          if (seenCodes.has(code)) {
-              duplicateInExcelCount++;
-              return; 
-          }
-          seenCodes.add(code);
-
-          const existsInDb = assets.some(a => a.code === code);
-          if (existsInDb) {
-              existingInDbCount++;
-              return; 
-          }
-
-          let rawCategory = row["Catégorie"] ? String(row["Catégorie"]).trim() : "";
-          let catCode = "";
-          if (rawCategory.includes("-")) {
-              catCode = rawCategory.split("-")[0].trim();
-          } else if (rawCategory.includes(" ")) {
-              catCode = rawCategory.split(" ")[0].trim();
-          } else {
-              catCode = rawCategory;
-          }
-          catCode = catCode.toUpperCase();
-
-          if (!config.categories[catCode]) {
-              validationErrors.push(`Ligne ${index + 2}: La catégorie '${catCode}' n'existe pas.`);
-          }
-
-          const asset: Partial<Asset> = {
-              code: code,
-              name: row["Nom"] || '',
-              category: catCode,
-              location: row["Localisation"] || '',
-              acquisitionYear: row["Année Acquisition"] ? String(row["Année Acquisition"]) : '',
-              state: row["État"] || config.states[0],
-              holderPresence: row["Présence Détenteur"] || config.holderPresences[0],
-              registrationDate: formatDate(row[fields.regDate.label]),
-              holder: row[fields.holder.label] || '',
-              door: row[fields.door.label] || '',
-              description: row[fields.desc.label] || '',
-              observation: row[fields.obs.label] || '',
-              unit: row["Unité"] || '',
-              amount: row["Montant"] ? parseFloat(String(row["Montant"]).replace(/[^0-9.-]+/g,"")) : 0,
-              customAttributes: {}
-          };
-
-          if (config.customFields) {
-              config.customFields.forEach(field => {
-                  if (row[field.label] !== undefined) {
-                      asset.customAttributes![field.id] = String(row[field.label]);
-                  }
-              });
-          }
-          parsedAssets.push(asset);
-      });
-
-      if (validationErrors.length > 0) {
-          alert(`IMPORTATION ANNULÉE : Erreurs détectées.\n\n${validationErrors.slice(0, 10).join('\n')}`);
-          return;
-      }
-
-      if (parsedAssets.length === 0) {
-          let message = "Aucun NOUVEL actif trouvé.";
-          if (existingInDbCount > 0) message += `\n- ${existingInDbCount} actifs existaient déjà.`;
-          if (duplicateInExcelCount > 0) message += `\n- ${duplicateInExcelCount} doublons dans le fichier Excel.`;
-          alert(message);
-          return;
-      }
-
-      if (onImport) {
-          onImport(parsedAssets);
-          alert(`Importation réussie !\n\n- ${parsedAssets.length} actifs ajoutés.\n- ${existingInDbCount} ignorés (déjà existants).\n- ${duplicateInExcelCount} doublons internes ignorés.`);
-      }
+      config.customFields?.forEach(f => { if (row[f.label] !== undefined) a.customAttributes![f.id] = String(row[f.label]); });
+      parsed.push(a);
+    });
+    if (errors.length) { alert(`Erreurs:\n${errors.slice(0, 10).join('\n')}`); return; }
+    if (!parsed.length) {
+      let m = 'Aucun nouvel actif.';
+      if (existing) m += `\n${existing} deja existants.`;
+      if (dupes) m += `\n${dupes} doublons.`;
+      alert(m); return;
+    }
+    onImport?.(parsed);
+    alert(`${parsed.length} actifs importes. ${existing} ignores. ${dupes} doublons.`);
   };
 
-  const years = Array.from({length: 2070 - 2007 + 1}, (_, i) => (2007 + i).toString());
+  const years = Array.from({ length: 2070 - 2007 + 1 }, (_, i) => (2007 + i).toString());
 
   return (
     <div className="p-3 md:p-6 bg-transparent min-h-screen">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div className="flex items-center gap-4">
-            <h2 className="text-xl md:text-2xl font-bold text-edc-blue">Gestion des Immobilisations</h2>
-            
-            {/* BOUTON SUPPRESSION MULTIPLE */}
-            {selectedIds.size > 0 && user.permissions.canDelete && (
-                <button 
-                  onClick={openBulkDeleteModal}
-                  className="animate-fade-in flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 border border-red-300 shadow-sm text-sm font-semibold"
-                >
-                   <Trash2 size={16} /> Supprimer ({selectedIds.size})
-                </button>
-            )}
+          <h2 className="text-xl md:text-2xl font-bold text-edc-blue">Gestion des Immobilisations</h2>
+          {selectedIds.size > 0 && user.permissions.canDelete && (
+            <button onClick={openBulkDeleteModal}
+              className="animate-fade-in flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 border border-red-300 shadow-sm text-sm font-semibold">
+              <Trash2 size={16} /> Supprimer ({selectedIds.size})
+            </button>
+          )}
         </div>
-
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           {user.permissions.isAdmin && (
-              <>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileImport} 
-                    hidden 
-                    accept=".xlsx, .xls"
-                  />
-                  <button onClick={downloadImportTemplate} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 shadow-sm transition-colors text-xs md:text-sm">
-                      <Download size={16} /> <span><span className="hidden sm:inline">Modèle</span> Excel</span>
-                  </button>
-                  <button onClick={triggerImport} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm transition-colors text-xs md:text-sm">
-                      <Upload size={16} /> <span>Import<span className="hidden sm:inline">er</span></span>
-                  </button>
-              </>
+            <>
+              <input type="file" ref={fileInputRef} onChange={handleFileImport} hidden accept=".xlsx,.xls" />
+              <button onClick={downloadImportTemplate} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 shadow-sm text-xs md:text-sm">
+                <Download size={16} /> <span><span className="hidden sm:inline">Modele</span> Excel</span>
+              </button>
+              <button onClick={() => { if (fileInputRef.current) { fileInputRef.current.value = ''; fileInputRef.current.click(); } }}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm text-xs md:text-sm">
+                <Upload size={16} /> <span>Import<span className="hidden sm:inline">er</span></span>
+              </button>
+            </>
           )}
-
           {user.permissions.canExport && (
-            <button onClick={exportToExcel} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm transition-colors text-xs md:text-sm">
+            <button onClick={exportToExcel} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm text-xs md:text-sm">
               <FileSpreadsheet size={16} /> <span>Export<span className="hidden sm:inline">er</span></span>
             </button>
           )}
           {user.permissions.canCreate && (
-            <button onClick={openCreateModal} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-edc-orange text-white rounded hover:bg-orange-700 shadow-sm transition-colors text-xs md:text-sm">
+            <button onClick={openCreateModal} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-edc-orange text-white rounded hover:bg-orange-700 shadow-sm text-xs md:text-sm">
               <Plus size={16} /> Nouveau
             </button>
           )}
         </div>
       </div>
 
-      {/* --- BARRE DE FILTRES MULTI-CRITÈRES --- */}
+      {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-4 border border-edc-border">
-         <div className="flex items-center gap-2 mb-3 text-edc-blue font-bold text-sm uppercase tracking-wide">
-           <Filter size={16} /> Filtres Avancés
-        </div>
+        <div className="flex items-center gap-2 mb-3 text-edc-blue font-bold text-sm uppercase tracking-wide"><Filter size={16} /> Filtres</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-           {/* Recherche Texte Globale (INCLUT PORTE ET UNITÉ) */}
-           <div className="relative">
-              <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Code, Nom, Porte, Unité..." 
-                className="w-full pl-10 pr-4 py-2 border rounded-md focus:ring-1 focus:ring-edc-blue outline-none text-sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-           </div>
-
-           {/* Filtre Localisation */}
-           <select 
-              value={filterLocation} 
-              onChange={(e) => setFilterLocation(e.target.value)}
-              className={`w-full border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-edc-blue outline-none ${filterLocation ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}
-           >
-              <option value="">Toutes Localisations</option>
-              {config.locations.map(l => <option key={l} value={l}>{l}</option>)}
-           </select>
-
-           {/* Filtre Catégorie */}
-           <select 
-              value={filterCategory} 
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className={`w-full border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-edc-blue outline-none ${filterCategory ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}
-           >
-              <option value="">Toutes Catégories</option>
-              {Object.keys(config.categories).sort().map(c => (
-                 <option key={c} value={c}>{c} - {config.categoriesDescriptions[c]}</option>
-              ))}
-           </select>
-
-           {/* Filtre État */}
-           <div className="flex gap-2">
-             <select 
-                value={filterState} 
-                onChange={(e) => setFilterState(e.target.value)}
-                className={`flex-1 border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-edc-blue outline-none ${filterState ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}
-             >
-                <option value="">Tous États</option>
-                {config.states.map(s => <option key={s} value={s}>{s}</option>)}
-             </select>
-             
-             {/* Bouton Reset */}
-             {(searchTerm || filterLocation || filterCategory || filterState) && (
-               <button 
-                 onClick={() => {
-                    setSearchTerm('');
-                    setFilterLocation('');
-                    setFilterCategory('');
-                    setFilterState('');
-                 }}
-                 className="p-2 text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                 title="Réinitialiser les filtres"
-               >
-                 <RotateCcw size={18} />
-               </button>
-             )}
-           </div>
-        </div>
-      </div>
-
-      {/* --- TABLE WITH PAGINATION, STICKY HEADERS & CUSTOM SCROLLBARS --- */}
-      <div className="bg-white rounded-lg shadow border border-edc-border flex flex-col relative">
-        
-        {/* BARRE DE SCROLL DU HAUT (SYNCHRONISÉE) */}
-        <div 
-            ref={topScrollRef}
-            className="overflow-x-auto border-b border-gray-100 no-scrollbar-vertical"
-            onScroll={() => handleSyncScroll(topScrollRef, tableContainerRef)}
-        >
-             {/* Div fantôme pour forcer la largeur du scroll */}
-             <div style={{ width: tableScrollWidth }} className="h-1 pt-1"></div>
-        </div>
-
-        {/* CONTAINER TABLE (SCROLL PRINCIPAL AVEC MAX-HEIGHT & STICKY HEADER) */}
-        <div 
-            ref={tableContainerRef}
-            className="overflow-auto max-h-[70vh]" 
-            onScroll={() => handleSyncScroll(tableContainerRef, topScrollRef)}
-        >
-            <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-100 sticky top-0 z-20 shadow-sm">
-                <tr>
-                {/* CHECKBOX SELECT ALL */}
-                <th className="px-6 py-3 text-left w-10 sticky top-0 bg-gray-100 z-20">
-                    <input 
-                      type="checkbox"
-                      className="rounded border-gray-300 text-edc-blue focus:ring-edc-blue cursor-pointer h-4 w-4"
-                      checked={isAllSelected}
-                      ref={input => { if (input) input.indeterminate = isIndeterminate; }}
-                      onChange={handleSelectAll}
-                    />
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Code</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Nom</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Catégorie</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Loc</th>
-                
-                {/* COLONNES UNITÉ ET MONTANT */}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Unité</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Montant</th>
-
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">État</th>
-                {fields.holder.isVisible && (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">{fields.holder.label}</th>
-                )}
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-100 z-20">Actions</th>
-                </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedAssets.length === 0 && (
-                    <tr>
-                        <td colSpan={10} className="text-center py-8 text-gray-500">
-                            {filteredAssets.length === 0 ? "Aucune immobilisation trouvée." : "Page vide."}
-                        </td>
-                    </tr>
-                )}
-                {paginatedAssets.map(asset => {
-                  const isSelected = selectedIds.has(asset.id);
-                  return (
-                    <tr 
-                        key={asset.id} 
-                        className={`hover:bg-gray-50 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
-                        onClick={() => toggleSelection(asset.id)} // CLIC LIGNE SIMPLE = SELECTION
-                        onDoubleClick={(e) => { e.stopPropagation(); openViewModal(asset); }} // DOUBLE CLIC = VUE
-                        title="Clic pour sélectionner, Double-clic pour voir"
-                    >
-                        {/* CHECKBOX LIGNE */}
-                        <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                            <input 
-                              type="checkbox"
-                              className="rounded border-gray-300 text-edc-blue focus:ring-edc-blue cursor-pointer h-4 w-4"
-                              checked={isSelected}
-                              onChange={() => toggleSelection(asset.id)}
-                            />
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-edc-blue">{asset.code}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{asset.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span className="font-semibold text-gray-700">{asset.category}</span>
-                        <span className="text-gray-400 text-xs ml-2 hidden lg:inline-block">
-                            - {config.categoriesDescriptions[asset.category]}
-                        </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.location}</td>
-                        
-                        {/* CELLULES UNITÉ ET MONTANT */}
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.unit || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {asset.amount ? new Intl.NumberFormat('fr-FR').format(asset.amount) : '-'} <span className="text-xs text-gray-400">FCFA</span>
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                            ${asset.state === 'Bon état' ? 'bg-green-100 text-green-800' : 
-                            asset.state === 'Défectueux' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {asset.state}
-                        </span>
-                        </td>
-                        {fields.holder.isVisible && (
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{asset.holder}</td>
-                        )}
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium" onClick={(e) => e.stopPropagation()}>
-                        {user.permissions.canUpdate && (
-                            <button 
-                                onClick={() => openEditModal(asset)} 
-                                className="text-indigo-600 hover:text-indigo-900 mr-3" 
-                                title="Modifier"
-                            >
-                            <Edit size={18} />
-                            </button>
-                        )}
-                        {!user.permissions.canUpdate && (
-                            <button 
-                                onClick={() => openViewModal(asset)} 
-                                className="text-gray-600 hover:text-gray-900 mr-3" 
-                                title="Voir détails"
-                            >
-                            <Eye size={18} />
-                            </button>
-                        )}
-                        {user.permissions.canDelete && (
-                            <button 
-                            onClick={() => openDeleteModal(asset.id)} 
-                            className="text-red-600 hover:text-red-900"
-                            title="Archiver"
-                            >
-                            <Trash2 size={18} />
-                            </button>
-                        )}
-                        </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-            </table>
-        </div>
-        
-        {/* Pagination Controls */}
-        {filteredAssets.length > ITEMS_PER_PAGE && (
-            <div className="bg-gray-50 px-4 py-3 flex flex-col sm:flex-row items-center justify-between border-t border-gray-200 gap-4 mt-auto">
-                <div className="flex-1 flex justify-between items-center w-full sm:w-auto">
-                    <div>
-                        <p className="text-sm text-gray-700 text-center sm:text-left">
-                            <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> - <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, filteredAssets.length)}</span> / <span className="font-medium">{filteredAssets.length}</span>
-                        </p>
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                            className={`relative inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md ${currentPage === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                        >
-                           <ChevronLeft size={16} /> <span className="hidden sm:inline ml-1">Précédent</span>
-                        </button>
-                        <button
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                            className={`relative inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md ${currentPage === totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                        >
-                           <span className="hidden sm:inline mr-1">Suivant</span> <ChevronRight size={16} />
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
-      </div>
-
-      {/* Main Asset Modal (Create / Edit / View) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
-          {/* ... (Contenu Modal Création/Edition INCHANGÉ) */}
-          <div className="bg-white rounded-lg shadow-xl w-[95%] sm:w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center p-4 md:p-6 border-b shrink-0">
-              <h3 className="text-lg md:text-xl font-bold text-gray-800">
-                {editingAsset 
-                  ? (isViewMode ? 'Détails Actif' : (user.permissions.canUpdate ? 'Modifier Actif' : 'Détails Actif')) 
-                  : 'Nouvel Actif'}
-              </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-gray-700 p-1">
-                <X size={24} />
-              </button>
-            </div>
-            
-            <div className="overflow-y-auto p-4 md:p-6">
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                <div className={`md:col-span-2 p-3 rounded border ${editingAsset ? 'bg-gray-100 border-gray-300' : 'bg-blue-50 border-blue-200'}`}>
-                    <p className="text-sm font-semibold text-gray-700 mb-1">Code Inventaire</p>
-                    <p className={`text-2xl font-bold tracking-wider ${editingAsset ? 'text-gray-600' : 'text-edc-blue'}`}>
-                        {editingAsset ? editingAsset.code : (previewCode || "...")}
-                    </p>
-                </div>
-                
-                {/* --- CHAMPS FORMULAIRE --- */}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Année d'acquisition *</label>
-                    <select 
-                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
-                        value={formData.acquisitionYear} 
-                        onChange={(e) => handleInputChange('acquisitionYear', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        {years.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Localisation *</label>
-                    <select 
-                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
-                        value={formData.location} 
-                        onChange={(e) => handleInputChange('location', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        <option value="">Sélectionner...</option>
-                        {config.locations.map((l, idx) => <option key={`${l}-${idx}`} value={l}>{l}</option>)}
-                    </select>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Catégorie *</label>
-                    <select 
-                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
-                        value={formData.category} 
-                        onChange={(e) => handleInputChange('category', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        <option value="">Sélectionner...</option>
-                        {Object.keys(config.categories).sort().map(k => (
-                        <option key={k} value={k}>{k} - {config.categoriesDescriptions[k]}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Nom *</label>
-                    <select 
-                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
-                        value={formData.name} 
-                        onChange={(e) => handleInputChange('name', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        <option value="">Sélectionner...</option>
-                        {formData.category && config.categories[formData.category]?.map((n, idx) => (
-                        <option key={`${n}-${idx}`} value={n}>{n}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* CHAMP UNITÉ */}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Unité</label>
-                    <input
-                        type="text"
-                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
-                        value={formData.unit}
-                        onChange={(e) => handleInputChange('unit', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    />
-                </div>
-
-                {/* CHAMP MONTANT */}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Montant (FCFA)</label>
-                    <input 
-                        type="number"
-                        disabled={isViewMode || (!user.permissions.canCreate && !editingAsset)}
-                        value={formData.amount} 
-                        onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                        min="0"
-                    />
-                </div>
-
-                {fields.desc.isVisible && (
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">{fields.desc.label}</label>
-                        <textarea 
-                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            value={formData.description} 
-                            onChange={(e) => handleInputChange('description', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
-                            rows={2}
-                        />
-                    </div>
-                )}
-
-                {fields.obs.isVisible && (
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">{fields.obs.label}</label>
-                        <textarea 
-                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            value={formData.observation} 
-                            onChange={(e) => handleInputChange('observation', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
-                            rows={2}
-                        />
-                    </div>
-                )}
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">État</label>
-                    <select 
-                        disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                        value={formData.state} 
-                        onChange={(e) => handleInputChange('state', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        {config.states.map((s, idx) => <option key={`${s}-${idx}`} value={s}>{s}</option>)}
-                    </select>
-                </div>
-
-                {fields.door.isVisible && (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">{fields.door.label}</label>
-                        <input 
-                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            type="text" 
-                            value={formData.door} 
-                            onChange={(e) => handleInputChange('door', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
-                        />
-                    </div>
-                )}
-
-                {fields.holder.isVisible && (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">{fields.holder.label}</label>
-                        <input 
-                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            type="text" 
-                            value={formData.holder} 
-                            onChange={(e) => handleInputChange('holder', e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
-                        />
-                    </div>
-                )}
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Présence Détenteur</label>
-                    <select 
-                        disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                        value={formData.holderPresence} 
-                        onChange={(e) => handleInputChange('holderPresence', e.target.value)}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        {config.holderPresences.map((s, idx) => <option key={`${s}-${idx}`} value={s}>{s}</option>)}
-                    </select>
-                </div>
-
-                {config.customFields && config.customFields.filter(f => !f.isArchived).map(field => (
-                    <div key={field.id} className="md:col-span-1">
-                        <label className="block text-sm font-medium text-gray-700 text-edc-blue">{field.label}</label>
-                        {field.type === 'select' ? (
-                            <select
-                            disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            value={formData.customAttributes?.[field.id] || ''}
-                            onChange={(e) => handleCustomAttributeChange(field.id, e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                            >
-                            <option value="">Sélectionner...</option>
-                            {field.options?.map((opt, idx) => (
-                                <option key={`${opt}-${idx}`} value={opt}>{opt}</option>
-                            ))}
-                            </select>
-                        ) : field.type === 'boolean' ? (
-                            <select
-                            disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            value={formData.customAttributes?.[field.id] || ''}
-                            onChange={(e) => handleCustomAttributeChange(field.id, e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                            >
-                            <option value="">-</option>
-                            <option value="Oui">Oui</option>
-                            <option value="Non">Non</option>
-                            </select>
-                        ) : (
-                            <input
-                            type={field.type}
-                            readOnly={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            value={formData.customAttributes?.[field.id] || ''}
-                            onChange={(e) => handleCustomAttributeChange(field.id, e.target.value)}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 read-only:bg-gray-100 read-only:text-gray-500"
-                            />
-                        )}
-                    </div>
-                ))}
-
-                {fields.photo.isVisible && (
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">{fields.photo.label}</label>
-                        <input 
-                            disabled={isViewMode || (!user.permissions.canUpdate && !!editingAsset)}
-                            type="file" 
-                            accept="image/*"
-                            onChange={handlePhotoUpload}
-                            className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:cursor-not-allowed"
-                        />
-                        {formData.photoUrl && (
-                            <img src={formData.photoUrl} alt="Preview" className="mt-2 h-32 object-contain border rounded" />
-                        )}
-                    </div>
-                )}
-                </form>
-            </div>
-
-            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 rounded-b-lg">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">
-                    {isViewMode ? "Fermer" : "Annuler"}
-                </button>
-                {!isViewMode && ((!editingAsset && user.permissions.canCreate) || (editingAsset && user.permissions.canUpdate)) && (
-                <button onClick={handleSubmit} type="button" className="px-4 py-2 bg-edc-blue text-white rounded hover:bg-blue-800 flex items-center gap-2">
-                    <Save size={18} /> Enregistrer
-                </button>
-                )}
-            </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+            <input type="text" placeholder="Code, Nom, Porte, Unite..." className="w-full pl-10 pr-4 py-2 border rounded-md focus:ring-1 focus:ring-edc-blue outline-none text-sm"
+              value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          </div>
+          <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)}
+            className={`w-full border rounded-md px-3 py-2 text-sm outline-none ${filterLocation ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}>
+            <option value="">Toutes Localisations</option>
+            {config.locations.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+            className={`w-full border rounded-md px-3 py-2 text-sm outline-none ${filterCategory ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}>
+            <option value="">Toutes Categories</option>
+            {Object.keys(config.categories).sort().map(c => <option key={c} value={c}>{c} - {config.categoriesDescriptions[c]}</option>)}
+          </select>
+          <div className="flex gap-2">
+            <select value={filterState} onChange={e => setFilterState(e.target.value)}
+              className={`flex-1 border rounded-md px-3 py-2 text-sm outline-none ${filterState ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}>
+              <option value="">Tous Etats</option>
+              {config.states.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {(searchTerm || filterLocation || filterCategory || filterState) && (
+              <button onClick={() => { setSearchTerm(''); setFilterLocation(''); setFilterCategory(''); setFilterState(''); }}
+                className="p-2 text-red-500 hover:bg-red-50 rounded-md" title="Reset"><RotateCcw size={18} /></button>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Delete Confirmation Modal (UPDATED FOR BULK) */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
-           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 text-center">
-             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-               <AlertTriangle className="h-6 w-6 text-red-600" />
-             </div>
-             <h3 className="text-lg font-bold text-gray-900 mb-2">Êtes-vous sûr ?</h3>
-             <p className="text-sm text-gray-500 mb-6">
-               Voulez-vous vraiment archiver{' '}
-               {/* MODIFICATION TEXTE DYNAMIQUE */}
-               {assetToDeleteId ? 
-                 "cet actif" : 
-                 <span className="font-bold text-red-600">{selectedIds.size} actifs sélectionnés</span>
-               } ? 
-               Cette action retirera {assetToDeleteId ? "l'actif" : "les actifs"} de la liste principale.
-             </p>
-             <div className="flex justify-center gap-3">
-               <button 
-                 onClick={() => setIsDeleteModalOpen(false)} 
-                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-medium"
-               >
-                 Annuler
-               </button>
-               <button 
-                 onClick={confirmDelete} 
-                 className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-medium shadow-sm"
-               >
-                 Confirmer
-               </button>
-             </div>
-           </div>
-        </div>
-      )}
+      {/* Table */}
+      <AssetTable
+        paginatedAssets={paginatedAssets} filteredAssetsCount={filteredAssets.length}
+        config={config} user={user} fields={fields}
+        selectedIds={selectedIds} isAllSelected={isAllSelected} isIndeterminate={isIndeterminate}
+        onSelectAll={handleSelectAll} onToggleSelection={toggleSelection}
+        currentPage={currentPage} totalPages={totalPages} itemsPerPage={ITEMS_PER_PAGE}
+        onPageChange={setCurrentPage} onView={openViewModal} onEdit={openEditModal} onDelete={openDeleteModal}
+      />
+
+      {/* Form Modal */}
+      <AssetFormModal
+        isOpen={isModalOpen} isViewMode={isViewMode} editingAsset={editingAsset}
+        formData={formData} previewCode={previewCode} config={config} user={user}
+        years={years} fields={fields}
+        onClose={() => setIsModalOpen(false)} onSubmit={handleSubmit}
+        onInputChange={handleInputChange} onCustomAttributeChange={handleCustomAttributeChange}
+        onPhotoUpload={handlePhotoUpload}
+      />
+
+      {/* Delete Confirm */}
+      <ConfirmDialog isOpen={isDeleteModalOpen} title="Etes-vous sur ?"
+        message={assetToDeleteId
+          ? "Voulez-vous vraiment archiver cet actif ?"
+          : <span>Archiver <strong className="text-red-600">{selectedIds.size} actifs</strong> selectionnes ?</span>}
+        onConfirm={confirmDelete} onCancel={() => setIsDeleteModalOpen(false)} />
 
       {/* Reason Modal */}
       {showReasonModal && (
-         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
-            {/* ... (Contenu inchangé) */}
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-              <h3 className="text-lg font-bold text-red-600 mb-2">Modification Critique Détectée</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Vous avez modifié des champs sensibles (Localisation, Année, Nom, Catégorie, etc.). 
-                Veuillez justifier cette modification pour le journal d'audit.
-              </p>
-              <textarea 
-                className="w-full border p-2 rounded mb-4" 
-                placeholder="Motif de la modification..."
-                value={modificationReason}
-                onChange={(e) => setModificationReason(e.target.value)}
-                rows={3}
-              />
-              <div className="flex justify-end gap-3">
-                <button onClick={() => setShowReasonModal(false)} className="px-3 py-1 text-gray-500">Annuler</button>
-                <button 
-                  disabled={!modificationReason.trim()}
-                  onClick={() => finalizeSave(pendingAssetData!, false, modificationReason)} 
-                  className="px-3 py-1 bg-red-600 text-white rounded disabled:opacity-50"
-                >
-                  Confirmer
-                </button>
-              </div>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold text-red-600 mb-2">Modification Critique</h3>
+            <p className="text-sm text-gray-600 mb-4">Justifiez cette modification pour le journal d'audit.</p>
+            <textarea className="w-full border p-2 rounded mb-4" placeholder="Motif..." value={modificationReason}
+              onChange={e => setModificationReason(e.target.value)} rows={3} />
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowReasonModal(false)} className="px-3 py-1 text-gray-500">Annuler</button>
+              <button disabled={!modificationReason.trim()} onClick={() => finalizeSave(pendingAssetData!, false, modificationReason)}
+                className="px-3 py-1 bg-red-600 text-white rounded disabled:opacity-50">Confirmer</button>
             </div>
-         </div>
+          </div>
+        </div>
       )}
     </div>
   );

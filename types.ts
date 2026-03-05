@@ -22,9 +22,8 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
-  password: string; // In real app, this would be hashed
   permissions: Permission;
-  preferences?: UserPreferences; // Added preferences
+  preferences?: UserPreferences;
 }
 
 export type AssetState = string; // Made dynamic

@@ -307,19 +307,32 @@ const App: React.FC = () => {
   };
 
   const handleBulkImport = async (importedAssets: Partial<Asset>[]) => {
+      const BATCH_SIZE = 450;
       let count = 0;
+
+      // Prepare all docs first
+      const operations: { ref: any; data: Asset }[] = [];
       for (const asset of importedAssets) {
-         if(asset.code) {
-             const existing = assets.find(a => a.code === asset.code);
-             const newDocRef = existing ? doc(db, "assets", existing.id) : doc(collection(db, "assets"));
-             const finalAsset = { ...asset, id: newDocRef.id, isArchived: false, customAttributes: asset.customAttributes || {} } as Asset;
-             await setDoc(newDocRef, finalAsset, { merge: true });
-             count++;
-         }
+        if (asset.code) {
+          const existing = assets.find(a => a.code === asset.code);
+          const docRef = existing ? doc(db, "assets", existing.id) : doc(collection(db, "assets"));
+          const finalAsset = { ...asset, id: docRef.id, isArchived: false, customAttributes: asset.customAttributes || {} } as Asset;
+          operations.push({ ref: docRef, data: finalAsset });
+        }
       }
-      alert(`${count} actifs importés.`);
+
+      // Write in batches of 450 (Firebase limit is 500)
+      for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+        const chunk = operations.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(op => batch.set(op.ref, op.data, { merge: true }));
+        await batch.commit();
+        count += chunk.length;
+      }
+
+      alert(`${count} actifs importes.`);
       const actorName = user ? user.firstName : 'Inconnu';
-      await addLog('CONFIG', `Import Excel : ${count} éléments par ${actorName}.`);
+      await addLog('CONFIG', `Import Excel : ${count} elements par ${actorName}.`);
   };
 
   const handleUpdateConfig = async (newConfig: AppConfig) => {
@@ -327,17 +340,16 @@ const App: React.FC = () => {
     setConfig(newConfig);
   };
 
-  const handleAddUser = async (u: User) => {
+  const handleAddUser = async (u: User, password: string) => {
     const secondaryAppName = `SecondaryApp-${Date.now()}`;
     let secondaryApp: any = null;
     try {
       secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
       const secondaryAuth = getAuthUtils(secondaryApp);
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, u.email, u.password);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, u.email, password);
       const newUid = userCredential.user.uid;
       if(newUid){
           const userToSave = { ...u, id: newUid };
-          delete (userToSave as any).password; 
           await setDoc(doc(db, "users", newUid), userToSave);
           alert(`Utilisateur ${u.firstName} créé avec succès !`);
       }
@@ -349,7 +361,8 @@ const App: React.FC = () => {
   };
 
   const handleUpdateUser = async (u: User) => {
-    await setDoc(doc(db, "users", u.id), u);
+    const { ...userData } = u;
+    await setDoc(doc(db, "users", u.id), userData);
   };
 
   const handleDeleteUser = async (id: string) => {

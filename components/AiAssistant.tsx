@@ -97,38 +97,37 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
     setIsTyping(true);
 
     try {
-      // @ts-ignore
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-      if (!apiKey || apiKey.includes('PLACEHOLDER')) {
-        throw new Error("Clé API introuvable.");
+      if (!apiKey || apiKey === 'PLACEHOLDER') {
+        throw new Error("Cle API introuvable.");
       }
 
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-      // --- MODIFICATION MAJEURE ICI : CONTEXTE ENRICHI ---
-      // On inclut l'année, la date, le code, le détenteur, etc.
-      const dataContext = assets.map(a => 
-        `- [${a.code}] ${a.name} (${a.category}) | Année: ${a.acquisitionYear} | Date Enreg: ${a.registrationDate} | Loc: ${a.location} (Porte: ${a.door || 'N/A'}) | Etat: ${a.state} | Détenteur: ${a.holder || 'Aucun'} (${a.holderPresence}) | Valeur: ${a.amount || 0} ${a.unit || ''}`
+      // Filtrage des donnees sensibles avant envoi - on exclut holder et montants
+      const dataContext = assets.map(a =>
+        `- [${a.code}] ${a.name} (${a.category}) | Annee: ${a.acquisitionYear} | Date Enreg: ${a.registrationDate} | Loc: ${a.location} | Etat: ${a.state} | Presence: ${a.holderPresence}`
       ).join('\n');
 
       const prompt = `
         NOM DE L'ASSISTANT: Panorama AI
         CONTEXTE: Tu es une IA experte en audit et gestion de patrimoine pour l'entreprise ${config.companyName}.
-        
-        DONNÉES INVENTAIRE EXHAUSTIVES:
+
+        DONNEES INVENTAIRE (${assets.length} actifs):
         ${dataContext}
-        
+
         DEMANDE UTILISATEUR: "${userMsg.text}"
-        
+
         CONSIGNES STRICTES:
-        1. Analyse TOUTES les données fournies ci-dessus.
-        2. Si l'utilisateur demande des acquisitions pour une année spécifique (ex: 2025), regarde le champ "Année" ou "Date Enreg".
-        3. Si l'utilisateur demande un rapport, structure-le proprement en Markdown (Titres ##, Listes à puces, Tableaux si pertinent).
-        4. Inclus des totaux et des sommaires (valeur totale, nombre d'articles) quand c'est pertinent.
-        5. Sois professionnel, précis et synthétique.
-        6. Si aucune donnée ne correspond, dis-le clairement.
+        1. Analyse TOUTES les donnees fournies ci-dessus.
+        2. Si l'utilisateur demande des acquisitions pour une annee specifique (ex: 2025), regarde le champ "Annee" ou "Date Enreg".
+        3. Si l'utilisateur demande un rapport, structure-le proprement en Markdown (Titres ##, Listes a puces, Tableaux si pertinent).
+        4. Inclus des totaux et des sommaires (nombre d'articles) quand c'est pertinent.
+        5. Sois professionnel, precis et synthetique.
+        6. Si aucune donnee ne correspond, dis-le clairement.
+        7. Tu n'as pas acces aux donnees financieres ni aux noms des detenteurs pour des raisons de confidentialite.
       `;
 
       const result = await model.generateContent(prompt);
@@ -277,18 +276,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
         </div>
       )}
       
-      <style>{`
-        @media print {
-          html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; background: white !important; }
-          body * { visibility: hidden; }
-          #printable-area, #printable-area * { visibility: visible; color: black !important; text-shadow: none !important; }
-          #printable-area { position: absolute; top: 0; left: 0; width: 100%; margin: 0; padding: 20px !important; height: auto !important; min-height: 100% !important; overflow: visible !important; display: block !important; background: white !important; z-index: 99999; }
-          .print-footer { display: block !important; position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding-bottom: 5px; color: gray !important; }
-          .prose, p, div { page-break-inside: auto; }
-          h1, h2, h3, tr, img { page-break-after: avoid; page-break-inside: avoid; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
     </>
   );
 };

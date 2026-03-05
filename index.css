@@ -1,0 +1,199 @@
+@import "tailwindcss";
+
+/* Custom theme configuration */
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: 'Playfair Display', serif;
+
+  --color-edc-blue: var(--edc-blue);
+  --color-edc-orange: var(--edc-orange);
+  --color-edc-light: var(--edc-light);
+  --color-edc-text: var(--edc-text);
+  --color-edc-border: var(--edc-border);
+  --color-edc-royal: #003366;
+  --color-edc-gold: #F59E0B;
+
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-fade-in-up: fade-in-up 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== CSS VARIABLES FOR THEMING ===== */
+:root {
+  --edc-blue: #003366;
+  --edc-orange: #FF6600;
+  --edc-light: #F0F4F8;
+  --edc-bg: #F3F4F6;
+  --edc-text: #111827;
+  --edc-sidebar-text: #FFFFFF;
+  --edc-border: #E5E7EB;
+  --edc-card-bg: #FFFFFF;
+}
+
+[data-theme='dark'] {
+  --edc-blue: #818cf8;
+  --edc-orange: #fbbf24;
+  --edc-light: #1e293b;
+  --edc-bg: #0f172a;
+  --edc-text: #f1f5f9;
+  --edc-sidebar-text: #e2e8f0;
+  --edc-border: #334155;
+  --edc-card-bg: #1e293b;
+}
+
+[data-theme='material'] {
+  --edc-blue: #6200EE;
+  --edc-orange: #03DAC6;
+  --edc-light: #F5F5F5;
+  --edc-bg: #FFFFFF;
+  --edc-text: #212121;
+  --edc-sidebar-text: #FFFFFF;
+  --edc-border: #E0E0E0;
+  --edc-card-bg: #FFFFFF;
+}
+
+[data-theme='green'] {
+  --edc-blue: #2D6A4F;
+  --edc-orange: #D8F3DC;
+  --edc-light: #F0FDF4;
+  --edc-bg: #F7FDF9;
+  --edc-text: #1B4332;
+  --edc-sidebar-text: #FFFFFF;
+  --edc-border: #bbf7d0;
+  --edc-card-bg: #FFFFFF;
+}
+
+[data-theme='modern'] {
+  --edc-blue: #0F172A;
+  --edc-orange: #6366F1;
+  --edc-light: #F8FAFC;
+  --edc-bg: #F1F5F9;
+  --edc-text: #334155;
+  --edc-sidebar-text: #94A3B8;
+  --edc-border: #CBD5E1;
+  --edc-card-bg: #FFFFFF;
+}
+
+body {
+  background-color: var(--edc-bg);
+  color: var(--edc-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ===== DARK MODE OVERRIDES ===== */
+[data-theme='dark'] .bg-white {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+[data-theme='dark'] .bg-gray-50,
+[data-theme='dark'] .bg-gray-100 {
+  background-color: #0f172a !important;
+  color: #94a3b8 !important;
+}
+
+[data-theme='dark'] .text-gray-500,
+[data-theme='dark'] .text-gray-600 {
+  color: #94a3b8 !important;
+}
+
+[data-theme='dark'] .text-gray-700,
+[data-theme='dark'] .text-gray-800,
+[data-theme='dark'] .text-gray-900 {
+  color: #f8fafc !important;
+}
+
+[data-theme='dark'] .border-gray-200,
+[data-theme='dark'] .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+[data-theme='dark'] input,
+[data-theme='dark'] select,
+[data-theme='dark'] textarea {
+  background-color: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+
+[data-theme='dark'] input:focus,
+[data-theme='dark'] select:focus,
+[data-theme='dark'] textarea:focus {
+  border-color: #818cf8 !important;
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.2) !important;
+}
+
+[data-theme='dark'] tr.hover\:bg-gray-50:hover {
+  background-color: #334155 !important;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+/* ===== PRINT STYLES ===== */
+@media print {
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+  body * { visibility: hidden; }
+  #printable-area, #printable-area * {
+    visibility: visible;
+    color: black !important;
+    text-shadow: none !important;
+  }
+  #printable-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    display: block !important;
+    background: white !important;
+    z-index: 99999;
+  }
+  .print-footer {
+    display: block !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: white;
+    padding-bottom: 5px;
+    color: gray !important;
+  }
+  .prose, p, div { page-break-inside: auto; }
+  h1, h2, h3, tr, img { page-break-after: avoid; page-break-inside: avoid; }
+  .no-print { display: none !important; }
+}
