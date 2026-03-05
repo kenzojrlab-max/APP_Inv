@@ -8,6 +8,7 @@ import {
 import UsersTab from './admin/UsersTab';
 import LogsTab from './admin/LogsTab';
 import TrashTab from './admin/TrashTab';
+import ConfirmDialog from './shared/ConfirmDialog';
 
 interface AdminPanelProps {
   users: User[];
@@ -57,6 +58,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingCoreFieldId, setEditingCoreFieldId] = useState<string | null>(null);
   const [editCoreLabel, setEditCoreLabel] = useState('');
 
+  // Generic confirm dialog state (replaces native confirm())
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean; title: string; message: string; onConfirm: () => void; variant?: 'danger' | 'warning';
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const showConfirm = (title: string, message: string, onConfirm: () => void, variant: 'danger' | 'warning' = 'warning') => {
+    setConfirmState({ isOpen: true, title, message, onConfirm: () => { setConfirmState(prev => ({ ...prev, isOpen: false })); onConfirm(); }, variant });
+  };
+
   const archivedAssets = useMemo(() => assets.filter(a => a.isArchived), [assets]);
 
   const handleConfigChange = (key: keyof AppConfig, val: any) => {
@@ -80,9 +89,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
   const removeLocation = (loc: string) => {
-    if (confirm(`Supprimer la localisation ${loc} ?`)) {
+    showConfirm('Supprimer la localisation', `Supprimer la localisation ${loc} ?`, () => {
       handleConfigChange('locations', config.locations.filter(l => l !== loc));
-    }
+    });
   };
   const addState = () => {
     if (newState && !config.states.includes(newState)) {
@@ -91,9 +100,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
   const removeState = (s: string) => {
-    if (confirm(`Supprimer l'etat ${s} ?`)) {
+    showConfirm('Supprimer l\'etat', `Supprimer l'etat ${s} ?`, () => {
       handleConfigChange('states', config.states.filter(item => item !== s));
-    }
+    });
   };
   const addHolderPresence = () => {
     if (newHolderPresence && !config.holderPresences.includes(newHolderPresence)) {
@@ -102,9 +111,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
   const removeHolderPresence = (p: string) => {
-    if (confirm(`Supprimer le statut ${p} ?`)) {
+    showConfirm('Supprimer le statut', `Supprimer le statut ${p} ?`, () => {
       handleConfigChange('holderPresences', config.holderPresences.filter(item => item !== p));
-    }
+    });
   };
   const addCategory = () => {
     if (newCatCode && newCatDesc) {
@@ -132,12 +141,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
   const removeCategoryItem = (cat: string, item: string) => {
-    if (confirm(`Supprimer "${item}" de la categorie ${cat} ?`)) {
+    showConfirm('Supprimer l\'element', `Supprimer "${item}" de la categorie ${cat} ?`, () => {
       onUpdateConfig({
         ...config,
         categories: { ...config.categories, [cat]: config.categories[cat].filter(i => i !== item) }
       });
-    }
+    });
   };
 
   // --- EDIT LIST ITEMS ---
@@ -226,9 +235,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onUpdateConfig({ ...config, customFields: updatedFields });
   };
   const deleteFieldPermanently = (id: string) => {
-    if (confirm("ATTENTION : SUPPRESSION DEFINITIVE.\n\nCe champ sera totalement efface de la configuration.\nLes donnees associees dans les fiches actifs ne seront plus visibles.\n\nPour masquer un champ tout en conservant les donnees, utilisez 'Desactiver'.\n\nVoulez-vous vraiment continuer ?")) {
-      onUpdateConfig({ ...config, customFields: config.customFields.filter(f => f.id !== id) });
-    }
+    showConfirm(
+      'Suppression definitive',
+      "Ce champ sera totalement efface de la configuration. Les donnees associees ne seront plus visibles. Pour masquer un champ tout en conservant les donnees, utilisez 'Desactiver'.",
+      () => { onUpdateConfig({ ...config, customFields: config.customFields.filter(f => f.id !== id) }); },
+      'danger'
+    );
   };
 
   // --- CORE FIELDS ACTIONS ---
@@ -643,6 +655,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {activeTab === 'trash' && (
         <TrashTab archivedAssets={archivedAssets} onRestoreAsset={onRestoreAsset} onPermanentDeleteAsset={onPermanentDeleteAsset} onEmptyTrash={onEmptyTrash} />
       )}
+
+      {/* Generic Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        variant={confirmState.variant || 'warning'}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

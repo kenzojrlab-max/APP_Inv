@@ -63,12 +63,12 @@
 
 [data-theme='green'] {
   --edc-blue: #2D6A4F;
-  --edc-orange: #D8F3DC;
+  --edc-orange: #40916C;
   --edc-light: #F0FDF4;
   --edc-bg: #F7FDF9;
   --edc-text: #1B4332;
   --edc-sidebar-text: #FFFFFF;
-  --edc-border: #bbf7d0;
+  --edc-border: #86EFAC;
   --edc-card-bg: #FFFFFF;
 }
 
@@ -136,6 +136,31 @@ body {
 
 [data-theme='dark'] tr.hover\:bg-gray-50:hover {
   background-color: #334155 !important;
+}
+
+/* ===== TOUCH & MOBILE ===== */
+@media (pointer: coarse) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  table button, table a, table [role="button"] {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}
+
+.touch-action-pan-y {
+  touch-action: pan-y;
+}
+
+/* Hide scrollbar but allow scroll */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* ===== SCROLLBAR ===== */

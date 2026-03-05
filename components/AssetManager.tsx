@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Asset, AppConfig, User } from '../types';
-import { Search, Plus, Trash2, FileSpreadsheet, Upload, Download, Filter, RotateCcw } from 'lucide-react';
+import { Search, Plus, Trash2, FileSpreadsheet, Upload, Download, Filter, RotateCcw, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import AssetTable from './assets/AssetTable';
 import AssetFormModal from './assets/AssetFormModal';
 import ConfirmDialog from './shared/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 
 interface AssetManagerProps {
   assets: Asset[];
@@ -13,11 +14,13 @@ interface AssetManagerProps {
   onSave: (asset: Asset, isNew: boolean, reason?: string) => void;
   onImport?: (assets: Partial<Asset>[]) => void;
   onDelete: (id: string) => void;
+  isImporting?: boolean;
 }
 
 const ITEMS_PER_PAGE = 50;
 
-const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSave, onImport, onDelete }) => {
+const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSave, onImport, onDelete, isImporting = false }) => {
+  const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -132,14 +135,14 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const openEditModal = (asset: Asset) => { setEditingAsset(asset); setFormData({ ...asset, customAttributes: asset.customAttributes || {} }); setPreviewCode(asset.code); setIsViewMode(false); setIsModalOpen(true); };
   const openViewModal = (asset: Asset) => { setEditingAsset(asset); setFormData({ ...asset, customAttributes: asset.customAttributes || {} }); setPreviewCode(asset.code); setIsViewMode(true); setIsModalOpen(true); };
 
-  const handleInputChange = (field: keyof Asset, value: any) => {
+  const handleInputChange = (field: keyof Asset, value: string | number | boolean) => {
     setFormData(prev => {
       const d = { ...prev, [field]: value };
       if (field === 'category') d.name = '';
       return d;
     });
   };
-  const handleCustomAttributeChange = (key: string, value: any) => {
+  const handleCustomAttributeChange = (key: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, customAttributes: { ...(prev.customAttributes || {}), [key]: value } }));
   };
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,10 +153,16 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isViewMode) return;
-    if (!formData.location || !formData.category || !formData.name) { alert('Veuillez remplir les champs obligatoires (Localisation, Categorie, Nom)'); return; }
+    if (!formData.location || !formData.category || !formData.name) {
+      toast.warning('Veuillez remplir les champs obligatoires (Localisation, Categorie, Nom)');
+      return;
+    }
     const toSave = { ...formData };
     if (!editingAsset) {
-      if (!formData.acquisitionYear || !formData.location || !formData.category) { alert('Impossible de generer le code complet.'); return; }
+      if (!formData.acquisitionYear || !formData.location || !formData.category) {
+        toast.warning('Impossible de generer le code complet.');
+        return;
+      }
       toSave.code = previewCode;
     }
     if (editingAsset) {
@@ -170,17 +179,17 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   // --- EXCEL EXPORT ---
   const exportToExcel = () => {
     const rows = filteredAssets.map(a => {
-      const row: any = {
+      const row: Record<string, string | number> = {
         'Code Inventaire': a.code, 'Nom': a.name,
         'Categorie': `${a.category} - ${config.categoriesDescriptions[a.category] || ''}`,
         'Localisation': a.location, 'Annee Acquisition': a.acquisitionYear,
-        'Unite': a.unit, 'Montant': a.amount,
+        'Unite': a.unit || '', 'Montant': a.amount || 0,
         [fields.regDate.label]: a.registrationDate, 'Etat': a.state,
         [fields.holder.label]: a.holder, 'Presence Detenteur': a.holderPresence,
         [fields.door.label]: a.door, [fields.desc.label]: a.description,
         [fields.obs.label]: a.observation,
       };
-      config.customFields?.forEach(f => { if (!f.isArchived) row[f.label] = a.customAttributes?.[f.id] || ''; });
+      config.customFields?.forEach(f => { if (!f.isArchived) row[f.label] = String(a.customAttributes?.[f.id] ?? ''); });
       return row;
     });
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -191,7 +200,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   };
 
   const downloadImportTemplate = () => {
-    const t: any = {
+    const t: Record<string, string> = {
       'Code Inventaire': '2024-EDC-AA-0001', 'Nom': 'Agrafeuse geante',
       'Categorie': 'AA - Materiel de bureau', 'Localisation': 'EDC',
       'Annee Acquisition': '2024', 'Unite': 'Pce', 'Montant': '15000',
@@ -212,57 +221,58 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (isImporting) return; // Prevent double import
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-    if (!['.xlsx', '.xls'].includes(ext)) { alert('Format invalide. Utilisez .xlsx ou .xls'); return; }
+    if (!['.xlsx', '.xls'].includes(ext)) { toast.warning('Format invalide. Utilisez .xlsx ou .xls'); return; }
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const wb = XLSX.read(evt.target?.result, { type: 'array', cellDates: true });
-        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        if (!data?.length) { alert('Le fichier semble vide.'); return; }
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as Record<string, unknown>[];
+        if (!data?.length) { toast.warning('Le fichier semble vide.'); return; }
         processImportedData(data);
-      } catch { alert('Erreur lors de la lecture du fichier Excel.'); }
+      } catch { toast.error('Erreur lors de la lecture du fichier Excel.'); }
     };
     reader.readAsArrayBuffer(file);
   };
 
-  const processImportedData = (data: any[]) => {
-    const fmtDate = (v: any) => v instanceof Date ? v.toISOString().split('T')[0] : (typeof v === 'string' && v.trim() ? v : new Date().toISOString().split('T')[0]);
+  const processImportedData = (data: Record<string, unknown>[]) => {
+    const fmtDate = (v: unknown) => v instanceof Date ? v.toISOString().split('T')[0] : (typeof v === 'string' && v.trim() ? v : new Date().toISOString().split('T')[0]);
     const missing = ['Code Inventaire', 'Nom', 'Categorie', 'Localisation'].filter(c => data[0][c] === undefined);
-    if (missing.length) { alert(`Colonnes manquantes: ${missing.join(', ')}`); return; }
+    if (missing.length) { toast.error(`Colonnes manquantes: ${missing.join(', ')}`); return; }
     const errors: string[] = [], seen = new Set<string>(), parsed: Partial<Asset>[] = [];
     let dupes = 0, existing = 0;
-    data.forEach((row: any, i: number) => {
+    data.forEach((row, i) => {
       const code = row['Code Inventaire'] ? String(row['Code Inventaire']).trim() : '';
       if (!code) return;
       if (seen.has(code)) { dupes++; return; }
       seen.add(code);
       if (assets.some(a => a.code === code)) { existing++; return; }
-      let rawCat = row['Categorie'] ? String(row['Categorie']).trim() : '';
-      let cc = (rawCat.includes('-') ? rawCat.split('-')[0] : rawCat.includes(' ') ? rawCat.split(' ')[0] : rawCat).trim().toUpperCase();
+      const rawCat = row['Categorie'] ? String(row['Categorie']).trim() : '';
+      const cc = (rawCat.includes('-') ? rawCat.split('-')[0] : rawCat.includes(' ') ? rawCat.split(' ')[0] : rawCat).trim().toUpperCase();
       if (!config.categories[cc]) errors.push(`Ligne ${i + 2}: Categorie '${cc}' inexistante.`);
       const a: Partial<Asset> = {
-        code, name: row['Nom'] || '', category: cc, location: row['Localisation'] || '',
+        code, name: String(row['Nom'] || ''), category: cc, location: String(row['Localisation'] || ''),
         acquisitionYear: row['Annee Acquisition'] ? String(row['Annee Acquisition']) : '',
-        state: row['Etat'] || config.states[0], holderPresence: row['Presence Detenteur'] || config.holderPresences[0],
-        registrationDate: fmtDate(row[fields.regDate.label]), holder: row[fields.holder.label] || '',
-        door: row[fields.door.label] || '', description: row[fields.desc.label] || '',
-        observation: row[fields.obs.label] || '', unit: row['Unite'] || '',
+        state: String(row['Etat'] || config.states[0]), holderPresence: String(row['Presence Detenteur'] || config.holderPresences[0]),
+        registrationDate: fmtDate(row[fields.regDate.label]), holder: String(row[fields.holder.label] || ''),
+        door: String(row[fields.door.label] || ''), description: String(row[fields.desc.label] || ''),
+        observation: String(row[fields.obs.label] || ''), unit: String(row['Unite'] || ''),
         amount: row['Montant'] ? parseFloat(String(row['Montant']).replace(/[^0-9.-]+/g, '')) : 0,
         customAttributes: {}
       };
       config.customFields?.forEach(f => { if (row[f.label] !== undefined) a.customAttributes![f.id] = String(row[f.label]); });
       parsed.push(a);
     });
-    if (errors.length) { alert(`Erreurs:\n${errors.slice(0, 10).join('\n')}`); return; }
+    if (errors.length) { toast.error(`Erreurs d'import: ${errors.slice(0, 5).join('; ')}`); return; }
     if (!parsed.length) {
-      let m = 'Aucun nouvel actif.';
-      if (existing) m += `\n${existing} deja existants.`;
-      if (dupes) m += `\n${dupes} doublons.`;
-      alert(m); return;
+      let m = 'Aucun nouvel actif a importer.';
+      if (existing) m += ` ${existing} deja existants.`;
+      if (dupes) m += ` ${dupes} doublons.`;
+      toast.info(m);
+      return;
     }
     onImport?.(parsed);
-    alert(`${parsed.length} actifs importes. ${existing} ignores. ${dupes} doublons.`);
   };
 
   const years = Array.from({ length: 2070 - 2007 + 1 }, (_, i) => (2007 + i).toString());
@@ -274,33 +284,40 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
         <div className="flex items-center gap-4">
           <h2 className="text-xl md:text-2xl font-bold text-edc-blue">Gestion des Immobilisations</h2>
           {selectedIds.size > 0 && user.permissions.canDelete && (
-            <button onClick={openBulkDeleteModal}
+            <button onClick={openBulkDeleteModal} aria-label={`Supprimer ${selectedIds.size} actifs selectionnes`}
               className="animate-fade-in flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 border border-red-300 shadow-sm text-sm font-semibold">
-              <Trash2 size={16} /> Supprimer ({selectedIds.size})
+              <Trash2 size={16} aria-hidden="true" /> Supprimer ({selectedIds.size})
             </button>
           )}
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           {user.permissions.isAdmin && (
             <>
-              <input type="file" ref={fileInputRef} onChange={handleFileImport} hidden accept=".xlsx,.xls" />
-              <button onClick={downloadImportTemplate} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 shadow-sm text-xs md:text-sm">
-                <Download size={16} /> <span><span className="hidden sm:inline">Modele</span> Excel</span>
+              <input type="file" ref={fileInputRef} onChange={handleFileImport} hidden accept=".xlsx,.xls" aria-label="Importer un fichier Excel" />
+              <button onClick={downloadImportTemplate} aria-label="Telecharger le modele Excel"
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 shadow-sm text-xs md:text-sm">
+                <Download size={16} aria-hidden="true" /> <span><span className="hidden sm:inline">Modele</span> Excel</span>
               </button>
-              <button onClick={() => { if (fileInputRef.current) { fileInputRef.current.value = ''; fileInputRef.current.click(); } }}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm text-xs md:text-sm">
-                <Upload size={16} /> <span>Import<span className="hidden sm:inline">er</span></span>
+              <button onClick={() => { if (!isImporting && fileInputRef.current) { fileInputRef.current.value = ''; fileInputRef.current.click(); } }}
+                disabled={isImporting} aria-label="Importer depuis un fichier Excel"
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm text-xs md:text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                {isImporting
+                  ? <><Loader2 size={16} className="animate-spin" aria-hidden="true" /> Import en cours...</>
+                  : <><Upload size={16} aria-hidden="true" /> <span>Import<span className="hidden sm:inline">er</span></span></>
+                }
               </button>
             </>
           )}
           {user.permissions.canExport && (
-            <button onClick={exportToExcel} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm text-xs md:text-sm">
-              <FileSpreadsheet size={16} /> <span>Export<span className="hidden sm:inline">er</span></span>
+            <button onClick={exportToExcel} aria-label="Exporter en Excel"
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm text-xs md:text-sm">
+              <FileSpreadsheet size={16} aria-hidden="true" /> <span>Export<span className="hidden sm:inline">er</span></span>
             </button>
           )}
           {user.permissions.canCreate && (
-            <button onClick={openCreateModal} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-edc-orange text-white rounded hover:bg-orange-700 shadow-sm text-xs md:text-sm">
-              <Plus size={16} /> Nouveau
+            <button onClick={openCreateModal} aria-label="Creer un nouvel actif"
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-edc-orange text-white rounded hover:bg-orange-700 shadow-sm text-xs md:text-sm">
+              <Plus size={16} aria-hidden="true" /> Nouveau
             </button>
           )}
         </div>
@@ -308,32 +325,37 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-4 border border-edc-border">
-        <div className="flex items-center gap-2 mb-3 text-edc-blue font-bold text-sm uppercase tracking-wide"><Filter size={16} /> Filtres</div>
+        <div className="flex items-center gap-2 mb-3 text-edc-blue font-bold text-sm uppercase tracking-wide">
+          <Filter size={16} aria-hidden="true" /> Filtres
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-            <input type="text" placeholder="Code, Nom, Porte, Unite..." className="w-full pl-10 pr-4 py-2 border rounded-md focus:ring-1 focus:ring-edc-blue outline-none text-sm"
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} aria-hidden="true" />
+            <input type="text" placeholder="Code, Nom, Porte, Unite..." aria-label="Rechercher des actifs"
+              className="w-full pl-10 pr-4 py-2 border rounded-md focus:ring-1 focus:ring-edc-blue outline-none text-sm"
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
-          <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)}
+          <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} aria-label="Filtrer par localisation"
             className={`w-full border rounded-md px-3 py-2 text-sm outline-none ${filterLocation ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}>
             <option value="">Toutes Localisations</option>
             {config.locations.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} aria-label="Filtrer par categorie"
             className={`w-full border rounded-md px-3 py-2 text-sm outline-none ${filterCategory ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}>
             <option value="">Toutes Categories</option>
             {Object.keys(config.categories).sort().map(c => <option key={c} value={c}>{c} - {config.categoriesDescriptions[c]}</option>)}
           </select>
           <div className="flex gap-2">
-            <select value={filterState} onChange={e => setFilterState(e.target.value)}
+            <select value={filterState} onChange={e => setFilterState(e.target.value)} aria-label="Filtrer par etat"
               className={`flex-1 border rounded-md px-3 py-2 text-sm outline-none ${filterState ? 'bg-blue-50 border-blue-300 font-medium' : 'bg-white'}`}>
               <option value="">Tous Etats</option>
               {config.states.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             {(searchTerm || filterLocation || filterCategory || filterState) && (
               <button onClick={() => { setSearchTerm(''); setFilterLocation(''); setFilterCategory(''); setFilterState(''); }}
-                className="p-2 text-red-500 hover:bg-red-50 rounded-md" title="Reset"><RotateCcw size={18} /></button>
+                className="p-2 text-red-500 hover:bg-red-50 rounded-md" aria-label="Reinitialiser les filtres">
+                <RotateCcw size={18} aria-hidden="true" />
+              </button>
             )}
           </div>
         </div>
@@ -363,16 +385,17 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
       <ConfirmDialog isOpen={isDeleteModalOpen} title="Etes-vous sur ?"
         message={assetToDeleteId
           ? "Voulez-vous vraiment archiver cet actif ?"
-          : <span>Archiver <strong className="text-red-600">{selectedIds.size} actifs</strong> selectionnes ?</span>}
+          : `Archiver ${selectedIds.size} actifs selectionnes ?`}
         onConfirm={confirmDelete} onCancel={() => setIsDeleteModalOpen(false)} />
 
       {/* Reason Modal */}
       {showReasonModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4" role="dialog" aria-label="Justification de modification">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <h3 className="text-lg font-bold text-red-600 mb-2">Modification Critique</h3>
             <p className="text-sm text-gray-600 mb-4">Justifiez cette modification pour le journal d'audit.</p>
-            <textarea className="w-full border p-2 rounded mb-4" placeholder="Motif..." value={modificationReason}
+            <label htmlFor="modification-reason" className="sr-only">Motif de la modification</label>
+            <textarea id="modification-reason" className="w-full border p-2 rounded mb-4" placeholder="Motif..." value={modificationReason}
               onChange={e => setModificationReason(e.target.value)} rows={3} />
             <div className="flex justify-end gap-3">
               <button onClick={() => setShowReasonModal(false)} className="px-3 py-1 text-gray-500">Annuler</button>

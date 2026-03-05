@@ -69,7 +69,7 @@ export interface Asset {
   amount?: number;    // Montant (ex: 15000)
 
   // Dynamic attributes storage
-  customAttributes: Record<string, any>; 
+  customAttributes: Record<string, string | number | boolean>;
 }
 
 export interface Log {
@@ -80,7 +80,7 @@ export interface Log {
   action: 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'EXPORT' | 'LOGIN' | 'CONFIG';
   description: string;
   targetCode?: string; // Asset Code
-  changes?: Array<{ field: string; before: any; after: any }>;
+  changes?: Array<{ field: string; before: string | number | boolean | null; after: string | number | boolean | null }>;
 }
 
 export interface AppConfig {
