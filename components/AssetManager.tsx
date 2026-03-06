@@ -6,6 +6,7 @@ import AssetTable from './assets/AssetTable';
 import AssetFormModal from './assets/AssetFormModal';
 import ConfirmDialog from './shared/ConfirmDialog';
 import { useToast } from '../hooks/useToast';
+import { sanitizeString, sanitizeNumber, sanitizeCode } from '../utils/sanitize';
 
 interface AssetManagerProps {
   assets: Asset[];
@@ -243,25 +244,25 @@ const AssetManager: React.FC<AssetManagerProps> = ({ assets, config, user, onSav
     const errors: string[] = [], seen = new Set<string>(), parsed: Partial<Asset>[] = [];
     let dupes = 0, existing = 0;
     data.forEach((row, i) => {
-      const code = row['Code Inventaire'] ? String(row['Code Inventaire']).trim() : '';
+      const code = sanitizeCode(row['Code Inventaire']);
       if (!code) return;
       if (seen.has(code)) { dupes++; return; }
       seen.add(code);
       if (assets.some(a => a.code === code)) { existing++; return; }
-      const rawCat = row['Categorie'] ? String(row['Categorie']).trim() : '';
+      const rawCat = sanitizeString(row['Categorie']);
       const cc = (rawCat.includes('-') ? rawCat.split('-')[0] : rawCat.includes(' ') ? rawCat.split(' ')[0] : rawCat).trim().toUpperCase();
       if (!config.categories[cc]) errors.push(`Ligne ${i + 2}: Categorie '${cc}' inexistante.`);
       const a: Partial<Asset> = {
-        code, name: String(row['Nom'] || ''), category: cc, location: String(row['Localisation'] || ''),
-        acquisitionYear: row['Annee Acquisition'] ? String(row['Annee Acquisition']) : '',
-        state: String(row['Etat'] || config.states[0]), holderPresence: String(row['Presence Detenteur'] || config.holderPresences[0]),
-        registrationDate: fmtDate(row[fields.regDate.label]), holder: String(row[fields.holder.label] || ''),
-        door: String(row[fields.door.label] || ''), description: String(row[fields.desc.label] || ''),
-        observation: String(row[fields.obs.label] || ''), unit: String(row['Unite'] || ''),
-        amount: row['Montant'] ? parseFloat(String(row['Montant']).replace(/[^0-9.-]+/g, '')) : 0,
+        code, name: sanitizeString(row['Nom']), category: cc, location: sanitizeString(row['Localisation']),
+        acquisitionYear: row['Annee Acquisition'] ? sanitizeString(row['Annee Acquisition']) : '',
+        state: sanitizeString(row['Etat']) || config.states[0], holderPresence: sanitizeString(row['Presence Detenteur']) || config.holderPresences[0],
+        registrationDate: fmtDate(row[fields.regDate.label]), holder: sanitizeString(row[fields.holder.label]),
+        door: sanitizeString(row[fields.door.label]), description: sanitizeString(row[fields.desc.label]),
+        observation: sanitizeString(row[fields.obs.label]), unit: sanitizeString(row['Unite']),
+        amount: sanitizeNumber(row['Montant']),
         customAttributes: {}
       };
-      config.customFields?.forEach(f => { if (row[f.label] !== undefined) a.customAttributes![f.id] = String(row[f.label]); });
+      config.customFields?.forEach(f => { if (row[f.label] !== undefined) a.customAttributes![f.id] = sanitizeString(row[f.label]); });
       parsed.push(a);
     });
     if (errors.length) { toast.error(`Erreurs d'import: ${errors.slice(0, 5).join('; ')}`); return; }

@@ -106,8 +106,8 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
     const groupKeys = new Set<string>();
 
     activeAssets.forEach(asset => {
-        const xValue = (asset as any)[customXAxis] || 'Non défini';
-        const groupValue = (asset as any)[customGroupBy] || 'Non défini';
+        const xValue = String(asset[customXAxis as keyof Asset] ?? 'Non defini');
+        const groupValue = String(asset[customGroupBy as keyof Asset] ?? 'Non defini');
 
         if (!map[xValue]) map[xValue] = {};
         map[xValue][groupValue] = (map[xValue][groupValue] || 0) + 1;
@@ -115,7 +115,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
     });
 
     const data = Object.keys(map).sort().map(xKey => {
-        const item: any = { name: xKey };
+        const item: Record<string, string | number> = { name: xKey };
         groupKeys.forEach(gKey => {
             item[gKey] = map[xKey][gKey] || 0;
         });

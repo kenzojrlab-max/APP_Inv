@@ -13,5 +13,16 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, '.'),
     }
-  }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          'vendor-xlsx': ['xlsx'],
+          'vendor-recharts': ['recharts'],
+        },
+      },
+    },
+  },
 });

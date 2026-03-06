@@ -193,7 +193,7 @@ const AssetFormModal: React.FC<AssetFormModalProps> = ({
                 <label className="block text-sm font-medium text-gray-700">{fields.photo.label}</label>
                 <input disabled={isDisabledUpdate} type="file" accept="image/*" onChange={onPhotoUpload}
                   className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:cursor-not-allowed" />
-                {formData.photoUrl && <img src={formData.photoUrl} alt="Preview" className="mt-2 h-32 object-contain border rounded" />}
+                {formData.photoUrl && <img src={formData.photoUrl} alt="Preview" className="mt-2 h-32 object-contain border rounded" loading="lazy" />}
               </div>
             )}
           </form>

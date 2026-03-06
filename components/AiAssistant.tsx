@@ -254,7 +254,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ assets, config }) => {
             <div id="printable-area" className="flex-1 overflow-y-auto p-8 md:p-12 font-serif text-justify leading-relaxed bg-white relative print:overflow-visible print:h-auto print:block print:flex-none">
                <div className="flex justify-between items-center mb-8 border-b-2 border-edc-blue pb-4 print:flex">
                   <div className="flex items-center gap-4">
-                    <img src={config.companyLogo} className="h-16 w-auto object-contain" alt="Logo" />
+                    <img src={config.companyLogo} className="h-16 w-auto object-contain" alt="Logo" loading="lazy" />
                     <div>
                         <h1 className="text-2xl font-bold text-edc-blue uppercase tracking-wider">{config.companyName}</h1>
                         <p className="text-sm text-gray-500 font-medium">Rapport Généré par Panorama AI</p>

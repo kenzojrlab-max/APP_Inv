@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { Asset, User, Log, AppConfig, Theme } from './types';
 import { INITIAL_CONFIG } from './constants';
-import Dashboard from './components/Dashboard';
-import AssetManager from './components/AssetManager';
-import AdminPanel from './components/AdminPanel';
-import AiAssistant from './components/AiAssistant';
 import ConfirmDialog from './components/shared/ConfirmDialog';
+
+// Lazy-loaded heavy components
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const AssetManager = lazy(() => import('./components/AssetManager'));
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
+const AiAssistant = lazy(() => import('./components/AiAssistant'));
 import { useToast } from './hooks/useToast';
 import { getUserDisplayName } from './utils/formatters';
 import { getFirebaseErrorMessage } from './utils/firebaseErrors';
@@ -457,6 +459,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        <Suspense fallback={<div className="flex items-center justify-center h-64" role="status" aria-label="Chargement"><Loader2 size={32} className="animate-spin text-edc-blue" aria-hidden="true" /></div>}>
         <div className="animate-fade-in h-full">
           {currentView === 'dashboard' && <Dashboard assets={assets} />}
           {currentView === 'assets' && (
@@ -476,9 +479,12 @@ const App: React.FC = () => {
             />
           )}
         </div>
+        </Suspense>
       </main>
 
-      <AiAssistant assets={assets} config={config} />
+      <Suspense fallback={null}>
+        <AiAssistant assets={assets} config={config} />
+      </Suspense>
 
       {/* Global ConfirmDialog */}
       <ConfirmDialog

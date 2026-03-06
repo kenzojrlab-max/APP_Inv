@@ -9,6 +9,7 @@ import UsersTab from './admin/UsersTab';
 import LogsTab from './admin/LogsTab';
 import TrashTab from './admin/TrashTab';
 import ConfirmDialog from './shared/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 
 interface AdminPanelProps {
   users: User[];
@@ -31,6 +32,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   users, logs, assets, config, onUpdateConfig, onAddUser, onUpdateUser, onDeleteUser,
   onRestoreAsset, onPermanentDeleteAsset, onEmptyTrash
 }) => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<MainTab>('identity');
   const [structureSubTab, setStructureSubTab] = useState<StructureSubTab>('fields');
 
@@ -49,7 +51,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingListValue, setEditingListValue] = useState('');
 
   // States for Fields Management
-  const [newField, setNewField] = useState<{label: string; type: string; options: string[]}>({ label: '', type: 'text', options: [] });
+  const [newField, setNewField] = useState<{label: string; type: CustomFieldType; options: string}>({ label: '', type: 'text', options: '' });
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [editFieldData, setEditFieldData] = useState<Partial<CustomField>>({});
   const [editOptionsStr, setEditOptionsStr] = useState('');
@@ -68,7 +70,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const archivedAssets = useMemo(() => assets.filter(a => a.isArchived), [assets]);
 
-  const handleConfigChange = (key: keyof AppConfig, val: any) => {
+  const handleConfigChange = (key: keyof AppConfig, val: AppConfig[keyof AppConfig]) => {
     onUpdateConfig({ ...config, [key]: val });
   };
 
@@ -118,7 +120,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const addCategory = () => {
     if (newCatCode && newCatDesc) {
       const code = newCatCode.toUpperCase();
-      if (config.categories[code]) return alert('Code categorie existe deja');
+      if (config.categories[code]) { toast.warning('Ce code categorie existe deja.'); return; }
       onUpdateConfig({
         ...config,
         categories: { ...config.categories, [code]: [] },
@@ -188,12 +190,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const addCustomField = () => {
     if (!newField.label || !newField.type) return;
     const id = `field_${Date.now()}`;
-    const fieldToAdd: CustomField = { id, label: newField.label, type: newField.type as any, isArchived: false };
+    const fieldToAdd: CustomField = { id, label: newField.label, type: newField.type, isArchived: false };
     if (newField.type === 'select') {
-      fieldToAdd.options = (newField.options as any as string || '').split(',').map((s: string) => s.trim());
+      fieldToAdd.options = newField.options.split(',').map(s => s.trim()).filter(s => s !== '');
     }
     onUpdateConfig({ ...config, customFields: [...(config.customFields || []), fieldToAdd] });
-    setNewField({ label: '', type: 'text', options: [] });
+    setNewField({ label: '', type: 'text', options: '' });
   };
   const startEditingField = (field: CustomField) => {
     setEditingFieldId(field.id);
@@ -306,7 +308,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <label className="block text-sm font-medium mb-2 text-gray-700">Logo de l'entreprise</label>
               <div className="flex items-center gap-6">
                 <div className="border p-2 rounded bg-gray-50 h-24 w-24 flex items-center justify-center shrink-0">
-                  <img src={config.companyLogo} className="max-h-20 max-w-20 object-contain" alt="Logo" />
+                  <img src={config.companyLogo} className="max-h-20 max-w-20 object-contain" alt="Logo" loading="lazy" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <input type="file" accept="image/*" onChange={handleLogoUpload} className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
@@ -384,7 +386,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Type de donnee</label>
-                    <select value={newField.type} onChange={e => setNewField({...newField, type: e.target.value as any})}
+                    <select value={newField.type} onChange={e => setNewField({...newField, type: e.target.value as CustomFieldType})}
                       className="border-2 border-gray-200 p-2.5 rounded w-full focus:border-green-500 outline-none transition bg-white">
                       <option value="text">Texte</option>
                       <option value="number">Nombre</option>
@@ -396,7 +398,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   {newField.type === 'select' && (
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Options (virgule)</label>
-                      <input value={newField.options as any} onChange={e => setNewField({...newField, options: e.target.value as any})}
+                      <input value={newField.options} onChange={e => setNewField({...newField, options: e.target.value})}
                         className="border-2 border-gray-200 p-2.5 rounded w-full focus:border-green-500 outline-none transition" placeholder="Rouge, Bleu, Vert" />
                     </div>
                   )}

@@ -14,7 +14,6 @@ const LogsTab: React.FC<LogsTabProps> = ({ logs }) => {
     return logs.filter(log => {
       const s = logSearchUser.toLowerCase();
       const matchesUser = log.userEmail.toLowerCase().includes(s) ||
-        (log as any).userName?.toLowerCase().includes(s) ||
         log.description.toLowerCase().includes(s);
       let matchesDate = true;
       if (logSearchDate) {

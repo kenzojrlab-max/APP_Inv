@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { User } from '../../types';
+import { User, Permission } from '../../types';
 import { Plus, Edit2, Trash2, UserCog, Lock } from 'lucide-react';
+import { useToast } from '../../hooks/useToast';
 
 interface UsersTabProps {
   users: User[];
@@ -10,6 +11,7 @@ interface UsersTabProps {
 }
 
 const UsersTab: React.FC<UsersTabProps> = ({ users, onAddUser, onUpdateUser, onDeleteUser }) => {
+  const toast = useToast();
   const [newUserOpen, setNewUserOpen] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({
     firstName: '', lastName: '', email: '',
@@ -19,7 +21,7 @@ const UsersTab: React.FC<UsersTabProps> = ({ users, onAddUser, onUpdateUser, onD
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   const handleCreateUser = () => {
-    if (!newUser.firstName || !newUser.email || !newUserPassword) return alert('Remplir les champs obligatoires (Prenom, Email, Mot de passe)');
+    if (!newUser.firstName || !newUser.email || !newUserPassword) { toast.warning('Remplir les champs obligatoires (Prenom, Email, Mot de passe)'); return; }
     onAddUser({
       id: Date.now().toString(),
       firstName: newUser.firstName!, lastName: newUser.lastName || '',
@@ -54,9 +56,9 @@ const UsersTab: React.FC<UsersTabProps> = ({ users, onAddUser, onUpdateUser, onD
           <div className="mb-4">
             <p className="font-semibold mb-2">Permissions:</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-              {Object.keys(newUser.permissions!).map(perm => (
+              {(Object.keys(newUser.permissions!) as Array<keyof Permission>).map(perm => (
                 <label key={perm} className="flex items-center space-x-2">
-                  <input type="checkbox" checked={(newUser.permissions as any)[perm]} onChange={e => setNewUser({ ...newUser, permissions: { ...newUser.permissions!, [perm]: e.target.checked } })} />
+                  <input type="checkbox" checked={newUser.permissions![perm]} onChange={e => setNewUser({ ...newUser, permissions: { ...newUser.permissions!, [perm]: e.target.checked } })} />
                   <span>{perm.replace('can', '')}</span>
                 </label>
               ))}
@@ -114,10 +116,10 @@ const UsersTab: React.FC<UsersTabProps> = ({ users, onAddUser, onUpdateUser, onD
             <div className="mb-6">
               <p className="font-semibold mb-2 text-sm">Permissions</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                {Object.keys(editingUser.permissions).map(perm => (
+                {(Object.keys(editingUser.permissions) as Array<keyof Permission>).map(perm => (
                   <label key={perm} className="flex items-center space-x-2 p-1 hover:bg-gray-100 rounded">
                     <input type="checkbox" disabled={perm === 'isAdmin' && editingUser.id === 'admin-001'}
-                      checked={(editingUser.permissions as any)[perm]}
+                      checked={editingUser.permissions[perm]}
                       onChange={e => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions, [perm]: e.target.checked } })} />
                     <span>{perm.replace('can', '')}</span>
                   </label>

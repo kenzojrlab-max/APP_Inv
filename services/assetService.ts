@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { Asset, User } from '../types';
 import { getUserDisplayName } from '../utils/formatters';
 import { withRetry } from '../utils/retry';
+import { checkRateLimit } from '../utils/rateLimit';
 import { addLog } from './logService';
 
 interface LogChange {
@@ -18,6 +19,9 @@ export async function saveAsset(
   existingAssets: Asset[],
   reason?: string
 ): Promise<void> {
+  if (!checkRateLimit('asset-save', 30)) {
+    throw new Error('Trop de modifications en peu de temps. Veuillez patienter.');
+  }
   const actorName = getUserDisplayName(user);
   if (isNew) {
     const newDocRef = doc(collection(db, 'assets'));
@@ -44,6 +48,9 @@ export async function saveAsset(
 }
 
 export async function archiveAsset(id: string, user: User, assets: Asset[]): Promise<void> {
+  if (!checkRateLimit('asset-archive', 20)) {
+    throw new Error('Trop de suppressions en peu de temps. Veuillez patienter.');
+  }
   const asset = assets.find(a => a.id === id);
   if (!asset) return;
   const actorName = getUserDisplayName(user);
@@ -90,6 +97,9 @@ export async function bulkImport(
   existingAssets: Asset[],
   user: User
 ): Promise<number> {
+  if (!checkRateLimit('asset-import', 3, 300000)) {
+    throw new Error('Import trop frequent. Veuillez patienter 5 minutes entre chaque import.');
+  }
   const BATCH_SIZE = 450;
   const operations: { ref: ReturnType<typeof doc>; data: Asset }[] = [];
 
